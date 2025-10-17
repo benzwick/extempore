@@ -584,8 +584,8 @@ if(UNIX)
 
     ExternalProject_Add(portmidi
       PREFIX portmidi
-      URL https://github.com/extemporelang/portmidi/archive/8602f548f71daf5ef638b2f7d224753400cb2158.zip
-      PATCH_COMMAND patch -p1 < ${CMAKE_SOURCE_DIR}/extras/portmidi-fixes.patch
+      URL https://github.com/PortMidi/portmidi/archive/refs/tags/v2.0.6.tar.gz
+      URL_HASH SHA256=81d22b34051621cd56c8d5ef12908ef2a59764c9cdfba6dae47aabddb71ac914
       CMAKE_ARGS
       -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
       -DCMAKE_C_FLAGS=${EXT_DEPS_C_FLAGS}
@@ -833,8 +833,8 @@ if(WIN32)
 
     ExternalProject_Add(portmidi
       PREFIX portmidi
-      URL https://github.com/extemporelang/portmidi/archive/8602f548f71daf5ef638b2f7d224753400cb2158.zip
-      PATCH_COMMAND patch -p1 < ${CMAKE_SOURCE_DIR}/extras/portmidi-fixes.patch
+      URL https://github.com/PortMidi/portmidi/archive/refs/tags/v2.0.6.tar.gz
+      URL_HASH SHA256=81d22b34051621cd56c8d5ef12908ef2a59764c9cdfba6dae47aabddb71ac914
       CMAKE_ARGS
       -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
       -DCMAKE_C_FLAGS=${EXT_DEPS_C_FLAGS}

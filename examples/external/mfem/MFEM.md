@@ -25,18 +25,62 @@ This integration brings the power of MFEM (Modular Finite Element Methods) libra
 
 ### Build Instructions
 
+#### Serial Build (CPU only)
 ```bash
 mkdir build && cd build
 cmake -DEXTERNAL_SHLIBS_SIMULATION=ON \
-      -DMFEM_USE_CUDA=OFF \
-      -DMFEM_USE_HIP=OFF \
+      -DMFEM_USE_MPI=NO \
       ..
-make
+make -j
 ```
 
-For GPU support:
-- CUDA: `-DMFEM_USE_CUDA=ON`
-- AMD ROCm: `-DMFEM_USE_HIP=ON`
+#### Parallel Build (with MPI)
+```bash
+mkdir build && cd build
+cmake -DEXTERNAL_SHLIBS_SIMULATION=ON \
+      -DMFEM_USE_MPI=YES \
+      ..
+make -j
+```
+
+#### GPU Build with CUDA
+For NVIDIA GPUs, you need to specify the compute capability (sm_XX):
+
+- **RTX 500/4000 Ada Generation (sm_89)**: Compute capability 8.9
+- **RTX 3090/3080/3070 (sm_86)**: Compute capability 8.6
+- **RTX 2080/2070 (sm_75)**: Compute capability 7.5
+- **V100 (sm_70)**: Compute capability 7.0
+
+Example for RTX 500 Ada Generation:
+```bash
+mkdir build && cd build
+cmake -DEXTERNAL_SHLIBS_SIMULATION=ON \
+      -DMFEM_USE_MPI=YES \
+      -DMFEM_USE_CUDA=YES \
+      -DCUDA_ARCH=sm_89 \
+      ..
+make -j
+```
+
+#### GPU Build with HIP (AMD GPUs)
+```bash
+mkdir build && cd build
+cmake -DEXTERNAL_SHLIBS_SIMULATION=ON \
+      -DMFEM_USE_MPI=YES \
+      -DMFEM_USE_HIP=YES \
+      -DHIP_ARCH=gfx90a \
+      ..
+make -j
+```
+
+#### Clean Rebuild
+If you need to change build options (e.g., enable/disable MPI or CUDA):
+```bash
+cd build
+rm -rf mfem glvis  # Clean MFEM/GLVis build directories
+cmake .. [new options]
+make -j
+```
 
 ## Usage
 

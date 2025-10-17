@@ -18,9 +18,12 @@ option(EXT_DYLIB "build extempore as a dynamic library" OFF)
 ## see note about the status of the Jack backend in BUILDING.md
 option(JACK "use the Jack Portaudio backend" OFF)
 
-## MFEM/Simulation options
-option(MFEM_USE_CUDA "Enable CUDA support in MFEM" OFF)
-option(MFEM_USE_HIP "Enable HIP/ROCm support in MFEM" OFF)
+## MFEM/Simulation options (matching MFEM's own options)
+option(MFEM_USE_MPI "Enable MPI parallel support in MFEM" YES)
+option(MFEM_USE_CUDA "Enable CUDA support in MFEM" NO)
+option(MFEM_USE_HIP "Enable HIP/ROCm support in MFEM" NO)
+set(CUDA_ARCH "sm_70" CACHE STRING "CUDA architecture (e.g. sm_70, sm_80)")
+set(HIP_ARCH "gfx908" CACHE STRING "HIP architecture (e.g. gfx908, gfx90a)")
 
 ## this is useful because we can group targets together (e.g. all the AOT libs)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
@@ -745,20 +748,42 @@ if(UNIX)
   if(EXTERNAL_SHLIBS_SIMULATION)
 
     # MFEM - Modular Finite Element Methods library
-    ExternalProject_Add(mfem
-      PREFIX mfem
-      URL https://github.com/mfem/mfem/archive/v4.8.tar.gz
-      CMAKE_ARGS
+    # Using MFEM's own dependency management via FETCH_TPLS
+    set(MFEM_CMAKE_ARGS
       -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
       -DCMAKE_C_FLAGS=${EXT_DEPS_C_FLAGS}
       -DCMAKE_CXX_FLAGS=${EXT_DEPS_CXX_FLAGS}
-      -DMFEM_USE_MPI=ON
-      -DMFEM_USE_METIS_5=ON
+      -DBUILD_SHARED_LIBS=ON
       -DMFEM_USE_OPENMP=ON
+      -DMFEM_THREAD_SAFE=ON
+      -DMFEM_USE_MPI=${MFEM_USE_MPI}
       -DMFEM_USE_CUDA=${MFEM_USE_CUDA}
       -DMFEM_USE_HIP=${MFEM_USE_HIP}
-      -DBUILD_SHARED_LIBS=ON
       -DCMAKE_INSTALL_PREFIX=${EXT_DEPS_INSTALL_DIR})
+
+    # If parallel build, use MFEM's built-in fetching of HYPRE and METIS
+    if(MFEM_USE_MPI)
+      list(APPEND MFEM_CMAKE_ARGS
+        -DFETCH_TPLS=YES
+        -DMFEM_USE_METIS_5=YES)
+    endif()
+
+    # Add CUDA architecture if CUDA is enabled
+    if(MFEM_USE_CUDA)
+      list(APPEND MFEM_CMAKE_ARGS -DCUDA_ARCH=${CUDA_ARCH})
+    endif()
+
+    # Add HIP architecture if HIP is enabled
+    if(MFEM_USE_HIP)
+      list(APPEND MFEM_CMAKE_ARGS
+        -DHIP_ARCH=${HIP_ARCH}
+        -DCMAKE_CXX_COMPILER=hipcc)
+    endif()
+
+    ExternalProject_Add(mfem
+      PREFIX mfem
+      URL https://github.com/mfem/mfem/archive/v4.8.tar.gz
+      CMAKE_ARGS ${MFEM_CMAKE_ARGS})
     set_target_properties(mfem PROPERTIES FOLDER EXTERNAL_SHLIBS)
 
     # GLVis - OpenGL visualization for MFEM

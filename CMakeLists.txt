@@ -778,7 +778,7 @@ if(UNIX)
         BUILD_IN_SOURCE FALSE
         INSTALL_COMMAND ${CMAKE_COMMAND} -E make_directory ${EXT_DEPS_INSTALL_DIR}/lib ${EXT_DEPS_INSTALL_DIR}/include
                 COMMAND ${CMAKE_COMMAND} -E copy <BINARY_DIR>/libmetis.a ${EXT_DEPS_INSTALL_DIR}/lib/
-                COMMAND ${CMAKE_COMMAND} -E copy <BINARY_DIR>/Lib/metis.h ${EXT_DEPS_INSTALL_DIR}/include/)
+                COMMAND ${CMAKE_COMMAND} -E copy <BINARY_DIR>/Lib/metis.h <BINARY_DIR>/Lib/defs.h <BINARY_DIR>/Lib/macros.h <BINARY_DIR>/Lib/proto.h <BINARY_DIR>/Lib/rename.h <BINARY_DIR>/Lib/struct.h ${EXT_DEPS_INSTALL_DIR}/include/)
       set_target_properties(metis PROPERTIES FOLDER EXTERNAL_SHLIBS)
     endif()
 

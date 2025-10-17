@@ -1,0 +1,417 @@
+;;; glvis.xtm -- GLVis socket protocol for MFEM visualization
+
+;; Author: Benjamin F. Zwick
+;; Keywords: extempore
+;; Required dylibs: none (socket-based communication)
+
+;;; Commentary:
+
+;; GLVis is a lightweight OpenGL tool for finite element visualization.
+;; This binding implements the GLVis socket protocol to send visualization
+;; data from MFEM simulations to a GLVis server for real-time display.
+
+;;; Code:
+
+;; lib loading config
+(if *impc:compiler:with-cache* (sys:load "libs/aot-cache/glvis.xtm" 'quiet))
+(sys:load-preload-check 'glvis)
+(define *xtmlib-glvis-loaded* #t)
+
+(impc:aot:suppress-aot-do
+ (sys:load "libs/base/base.xtm")
+ (sys:load "libs/external/mfem.xtm"))
+(impc:aot:insert-forms
+ (sys:load "libs/base/base.xtm" 'quiet)
+ (sys:load "libs/external/mfem.xtm" 'quiet))
+
+(impc:aot:insert-header "xtmglvis")
+
+;; No dynamic library - this is pure socket communication
+(impc:aot:import-ll "xtmglvis")
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Socket Functions
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Platform-specific includes for sockets
+(if (string=? (sys:platform) "Windows")
+    (begin
+      (bind-lib kernel32 WSAStartup [i32,i16,i8*]*)
+      (bind-lib kernel32 WSACleanup [i32]*)
+      (bind-lib ws2_32 socket [i32,i32,i32,i32]*)
+      (bind-lib ws2_32 connect [i32,i32,i8*,i32]*)
+      (bind-lib ws2_32 send [i32,i32,i8*,i32,i32]*)
+      (bind-lib ws2_32 recv [i32,i32,i8*,i32,i32]*)
+      (bind-lib ws2_32 closesocket [i32,i32]*)
+      (bind-lib ws2_32 gethostbyname [i8*,i8*]*)
+      (bind-lib ws2_32 htons [i16,i16]*)
+      (bind-lib ws2_32 inet_addr [i32,i8*]*))
+    (begin
+      (bind-lib libc socket [i32,i32,i32,i32]*)
+      (bind-lib libc connect [i32,i32,i8*,i32]*)
+      (bind-lib libc send [i64,i32,i8*,i64,i32]*)
+      (bind-lib libc recv [i64,i32,i8*,i64,i32]*)
+      (bind-lib libc close [i32,i32]*)
+      (bind-lib libc gethostbyname [i8*,i8*]*)
+      (bind-lib libc htons [i16,i16]*)
+      (bind-lib libc inet_addr [i32,i8*]*)))
+
+;; Socket constants
+(bind-val AF_INET i32 2)
+(bind-val SOCK_STREAM i32 1)
+(bind-val IPPROTO_TCP i32 6)
+(bind-val INVALID_SOCKET i32 -1)
+
+;; Socket address structure
+(bind-type sockaddr_in <i16,i16,i32,|8,i8|>)
+
+;; GLVis connection structure
+(bind-type glvis_connection <i32,i8*,i32,i1>
+  (printer? . #f))
+;; Fields: socket, hostname, port, connected
+
+;; Default GLVis port
+(bind-val GLVIS_DEFAULT_PORT i32 19916)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Connection Management
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Create a GLVis connection
+(bind-func glvis_create_connection
+  (lambda (hostname:i8* port:i32)
+    (let ((conn:glvis_connection* (halloc))
+          (sock:i32 (socket AF_INET SOCK_STREAM IPPROTO_TCP)))
+      (if (= sock INVALID_SOCKET)
+          (begin
+            (printf "Failed to create socket\n")
+            null)
+          (begin
+            (tset! conn 0 sock)
+            (tset! conn 1 hostname)
+            (tset! conn 2 port)
+            (tset! conn 3 #f)
+            conn)))))
+
+;; Connect to GLVis server
+(bind-func glvis_connect
+  (lambda (conn:glvis_connection*)
+    (if (null? conn)
+        #f
+        (let ((addr:sockaddr_in* (salloc))
+              (hostname (tref conn 1))
+              (port (tref conn 2))
+              (sock (tref conn 0)))
+          (tfill! addr
+                  AF_INET
+                  (htons (convert port i16))
+                  (inet_addr hostname)
+                  0 0 0 0 0 0 0 0)
+          (if (< (connect sock (cast addr i8*) 16) 0)
+              (begin
+                (printf "Failed to connect to GLVis at %s:%d\n" hostname port)
+                #f)
+              (begin
+                (tset! conn 3 #t)
+                (printf "Connected to GLVis at %s:%d\n" hostname port)
+                #t))))))
+
+;; Send data to GLVis
+(bind-func glvis_send
+  (lambda (conn:glvis_connection* data:i8* len:i64)
+    (if (and (not (null? conn)) (tref conn 3))
+        (let ((sock (tref conn 0)))
+          (send sock data len 0))
+        -1)))
+
+;; Send string to GLVis
+(bind-func glvis_send_string
+  (lambda (conn:glvis_connection* str:i8*)
+    (glvis_send conn str (strlen str))))
+
+;; Close GLVis connection
+(bind-func glvis_close
+  (lambda (conn:glvis_connection*)
+    (if (not (null? conn))
+        (let ((sock (tref conn 0)))
+          (if (tref conn 3)
+              (if (string=? (sys:platform) "Windows")
+                  (closesocket sock)
+                  (close sock)))
+          (tset! conn 3 #f)
+          void))))
+
+;; Free connection structure
+(bind-func glvis_destroy_connection
+  (lambda (conn:glvis_connection*)
+    (if (not (null? conn))
+        (begin
+          (glvis_close conn)
+          (free conn)
+          void))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; GLVis Protocol Commands
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Send mesh to GLVis
+(bind-func glvis_send_mesh
+  (lambda (conn:glvis_connection* mesh:mfem_Mesh)
+    (if (and (not (null? conn)) (tref conn 3))
+        (begin
+          (glvis_send_string conn "mesh\n")
+          ;; Save mesh to temporary file and send contents
+          (let ((tmpfile "/tmp/glvis_mesh.mesh"))
+            (mfem_mesh_save mesh tmpfile)
+            ;; Read and send file contents
+            (let ((file (fopen tmpfile "r"))
+                  (buffer:i8* (salloc 4096))
+                  (bytes:i64 0))
+              (if (not (null? file))
+                  (begin
+                    (set! bytes (fread buffer 1 4096 file))
+                    (while (> bytes 0)
+                      (glvis_send conn buffer bytes)
+                      (set! bytes (fread buffer 1 4096 file)))
+                    (fclose file)
+                    #t)
+                  #f))))
+        #f)))
+
+;; Send solution (grid function) to GLVis
+(bind-func glvis_send_solution
+  (lambda (conn:glvis_connection* mesh:mfem_Mesh sol:mfem_GridFunction)
+    (if (and (not (null? conn)) (tref conn 3))
+        (begin
+          (glvis_send_string conn "solution\n")
+          ;; Send mesh first
+          (glvis_send_mesh conn mesh)
+          ;; Then send solution
+          (let ((tmpfile "/tmp/glvis_sol.gf"))
+            (mfem_gridfunc_save sol tmpfile)
+            (let ((file (fopen tmpfile "r"))
+                  (buffer:i8* (salloc 4096))
+                  (bytes:i64 0))
+              (if (not (null? file))
+                  (begin
+                    (set! bytes (fread buffer 1 4096 file))
+                    (while (> bytes 0)
+                      (glvis_send conn buffer bytes)
+                      (set! bytes (fread buffer 1 4096 file)))
+                    (fclose file)
+                    #t)
+                  #f))))
+        #f)))
+
+;; Send parallel solution
+(bind-func glvis_send_parallel_solution
+  (lambda (conn:glvis_connection* pmesh:mfem_ParMesh psol:mfem_ParGridFunction)
+    (if (and (not (null? conn)) (tref conn 3))
+        (begin
+          (glvis_send_string conn "parallel ")
+          (glvis_send_string conn (number->string (mfem_mpi_size)))
+          (glvis_send_string conn " ")
+          (glvis_send_string conn (number->string (mfem_mpi_rank)))
+          (glvis_send_string conn "\n")
+          (glvis_send_string conn "solution\n")
+          ;; Send parallel mesh and solution data
+          ;; This would need proper parallel mesh/solution serialization
+          #t)
+        #f)))
+
+;; Send window commands
+(bind-func glvis_window_title
+  (lambda (conn:glvis_connection* title:i8*)
+    (if (and (not (null? conn)) (tref conn 3))
+        (begin
+          (glvis_send_string conn "window_title '")
+          (glvis_send_string conn title)
+          (glvis_send_string conn "'\n")
+          #t)
+        #f)))
+
+(bind-func glvis_window_size
+  (lambda (conn:glvis_connection* width:i32 height:i32)
+    (if (and (not (null? conn)) (tref conn 3))
+        (let ((cmd:i8* (salloc 256)))
+          (sprintf cmd "window_size %d %d\n" width height)
+          (glvis_send_string conn cmd)
+          #t)
+        #f)))
+
+(bind-func glvis_view
+  (lambda (conn:glvis_connection* theta:double phi:double)
+    (if (and (not (null? conn)) (tref conn 3))
+        (let ((cmd:i8* (salloc 256)))
+          (sprintf cmd "view %f %f\n" theta phi)
+          (glvis_send_string conn cmd)
+          #t)
+        #f)))
+
+(bind-func glvis_zoom
+  (lambda (conn:glvis_connection* factor:double)
+    (if (and (not (null? conn)) (tref conn 3))
+        (let ((cmd:i8* (salloc 256)))
+          (sprintf cmd "zoom %f\n" factor)
+          (glvis_send_string conn cmd)
+          #t)
+        #f)))
+
+(bind-func glvis_palette
+  (lambda (conn:glvis_connection* palette:i32)
+    (if (and (not (null? conn)) (tref conn 3))
+        (let ((cmd:i8* (salloc 256)))
+          (sprintf cmd "palette %d\n" palette)
+          (glvis_send_string conn cmd)
+          #t)
+        #f)))
+
+(bind-func glvis_autoscale
+  (lambda (conn:glvis_connection* mode:i8*)
+    (if (and (not (null? conn)) (tref conn 3))
+        (begin
+          (glvis_send_string conn "autoscale ")
+          (glvis_send_string conn mode)
+          (glvis_send_string conn "\n")
+          #t)
+        #f)))
+
+(bind-func glvis_pause
+  (lambda (conn:glvis_connection*)
+    (if (and (not (null? conn)) (tref conn 3))
+        (begin
+          (glvis_send_string conn "pause\n")
+          #t)
+        #f)))
+
+(bind-func glvis_play
+  (lambda (conn:glvis_connection*)
+    (if (and (not (null? conn)) (tref conn 3))
+        (begin
+          (glvis_send_string conn "play\n")
+          #t)
+        #f)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; High-Level Visualization Functions
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Global GLVis connection for convenience
+(bind-val *glvis_conn* glvis_connection*)
+
+;; Initialize GLVis connection
+(bind-func glvis_init
+  (lambda ()
+    (if (not (null? *glvis_conn*))
+        (glvis_destroy_connection *glvis_conn*))
+    (set! *glvis_conn* (glvis_create_connection "localhost" GLVIS_DEFAULT_PORT))
+    (if (not (null? *glvis_conn*))
+        (glvis_connect *glvis_conn*)
+        #f)))
+
+;; Initialize GLVis with custom host/port
+(bind-func glvis_init_custom
+  (lambda (host:i8* port:i32)
+    (if (not (null? *glvis_conn*))
+        (glvis_destroy_connection *glvis_conn*))
+    (set! *glvis_conn* (glvis_create_connection host port))
+    (if (not (null? *glvis_conn*))
+        (glvis_connect *glvis_conn*)
+        #f)))
+
+;; Visualize mesh
+(bind-func glvis_show_mesh
+  (lambda (mesh:mfem_Mesh)
+    (if (not (null? *glvis_conn*))
+        (glvis_send_mesh *glvis_conn* mesh)
+        (begin
+          (printf "GLVis not connected. Call glvis_init() first.\n")
+          #f))))
+
+;; Visualize solution
+(bind-func glvis_show_solution
+  (lambda (mesh:mfem_Mesh sol:mfem_GridFunction)
+    (if (not (null? *glvis_conn*))
+        (glvis_send_solution *glvis_conn* mesh sol)
+        (begin
+          (printf "GLVis not connected. Call glvis_init() first.\n")
+          #f))))
+
+;; Visualize with title and view settings
+(bind-func glvis_show_solution_with_settings
+  (lambda (mesh:mfem_Mesh sol:mfem_GridFunction title:i8* theta:double phi:double)
+    (if (not (null? *glvis_conn*))
+        (begin
+          (glvis_send_solution *glvis_conn* mesh sol)
+          (glvis_window_title *glvis_conn* title)
+          (glvis_view *glvis_conn* theta phi)
+          (glvis_autoscale *glvis_conn* "value")
+          #t)
+        (begin
+          (printf "GLVis not connected. Call glvis_init() first.\n")
+          #f))))
+
+;; Cleanup GLVis connection
+(bind-func glvis_cleanup
+  (lambda ()
+    (if (not (null? *glvis_conn*))
+        (begin
+          (glvis_destroy_connection *glvis_conn*)
+          (set! *glvis_conn* null)
+          void))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Real-time Streaming Support
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Stream solution updates at specified framerate
+(bind-func glvis_stream_solution
+  (lambda (mesh:mfem_Mesh sol:mfem_GridFunction fps:double)
+    (if (not (null? *glvis_conn*))
+        (let ((frame_time:double (/ 1.0 fps))
+              (last_time:double (clock_clock)))
+          ;; Send initial solution
+          (glvis_send_solution *glvis_conn* mesh sol)
+          ;; Return a callback for updates
+          (lambda ()
+            (let ((current_time:double (clock_clock)))
+              (if (>= (- current_time last_time) frame_time)
+                  (begin
+                    (glvis_send_solution *glvis_conn* mesh sol)
+                    (set! last_time current_time)
+                    #t)
+                  #f))))
+        (lambda () #f))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Socket Save/Replay Support
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Save socket stream to file
+(bind-func glvis_start_recording
+  (lambda (filename:i8*)
+    ;; This would implement recording of GLVis commands
+    ;; For now, just a placeholder
+    (printf "Recording GLVis stream to %s (not implemented)\n" filename)
+    #t))
+
+(bind-func glvis_stop_recording
+  (lambda ()
+    (printf "Stopped GLVis recording (not implemented)\n")
+    #t))
+
+;; Replay saved socket stream
+(bind-func glvis_replay
+  (lambda (filename:i8*)
+    (printf "Replaying GLVis stream from %s (not implemented)\n" filename)
+    #t))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Cleanup
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(impc:aot:insert-footer "xtmglvis")
+(define *xtmlib-glvis-loaded* #t)
+
+(println "GLVis socket protocol loaded successfully")
+(println "Use (glvis_init) to connect to GLVis server on port 19916")

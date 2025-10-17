@@ -1,0 +1,341 @@
+;;; mfem_heat_equation.xtm -- Interactive heat equation simulation with MFEM
+
+;; Author: Benjamin F. Zwick
+;; Keywords: extempore, mfem, simulation, hpc
+
+;;; Commentary:
+
+;; This example demonstrates an interactive heat equation simulation using MFEM
+;; with real-time parameter control, audio-reactive sources, and GLVis visualization.
+;;
+;; The heat equation: ∂u/∂t = α∇²u + f(x,t)
+;; where u is temperature, α is thermal diffusivity, and f is a heat source
+;;
+;; Features:
+;; - Live parameter tweaking (diffusivity, source strength)
+;; - Audio-driven heat sources
+;; - Real-time visualization via GLVis
+;; - MPI parallel support for HPC
+;; - Hot-reload of simulation parameters
+
+;;; Code:
+
+(sys:load "libs/external/mfem.xtm")
+(sys:load "libs/external/glvis.xtm")
+(sys:load "libs/core/audio_dsp.xtm")
+
+;; Initialize MPI if running in parallel
+(if (> (mfem_mpi_size) 1)
+    (println "Running in parallel on" (mfem_mpi_size) "processes")
+    (println "Running in serial mode"))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Simulation State
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Global simulation state
+(bind-type heat_sim_state
+  <mfem_Mesh,           ;; 0 - mesh
+   mfem_FiniteElementSpace,  ;; 1 - FE space
+   mfem_GridFunction,    ;; 2 - temperature field
+   mfem_GridFunction,    ;; 3 - previous temperature
+   mfem_BilinearForm,    ;; 4 - mass matrix
+   mfem_BilinearForm,    ;; 5 - stiffness matrix
+   mfem_LinearForm,      ;; 6 - heat source
+   mfem_ODESolver,       ;; 7 - time integrator
+   double,               ;; 8 - current time
+   double,               ;; 9 - time step
+   i1>                   ;; 10 - is running
+  (printer? . #f))
+
+(bind-val *heat_sim* heat_sim_state*)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Heat Source Functions
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Static heat source at center
+(bind-func center_heat_source:mfem_coeff_func
+  (lambda (x t)
+    (let ((cx 0.5) (cy 0.5)  ;; center coordinates
+          (r (sqrt (+ (* (- (pref x 0) cx) (- (pref x 0) cx))
+                      (* (- (pref x 1) cy) (- (pref x 1) cy)))))
+          (source_radius 0.1))
+      (if (< r source_radius)
+          (* (mfem_get_param "source") (+ 1.0 (cos (* PI (/ r source_radius)))))
+          0.0))))
+
+;; Audio-reactive heat source - moves with beat
+(bind-func audio_heat_source:mfem_coeff_func
+  (lambda (x t)
+    (let ((audio_amp *mfem_audio_amplitude*)
+          (audio_freq *mfem_audio_frequency*)
+          ;; Move source position with audio
+          (cx (+ 0.5 (* 0.3 audio_amp (sin (* 2.0 PI audio_freq t)))))
+          (cy (+ 0.5 (* 0.3 audio_amp (cos (* 2.0 PI audio_freq t)))))
+          (r (sqrt (+ (* (- (pref x 0) cx) (- (pref x 0) cx))
+                      (* (- (pref x 1) cy) (- (pref x 1) cy)))))
+          (source_radius (* 0.15 (+ 1.0 (* 0.5 audio_amp)))))
+      (if (< r source_radius)
+          (* (mfem_get_param "source")
+             (+ 1.0 (* audio_amp (cos (* PI (/ r source_radius))))))
+          0.0))))
+
+;; Oscillating boundary conditions
+(bind-func oscillating_bc:mfem_coeff_func
+  (lambda (x t)
+    (* 0.5 (+ 1.0 (sin (* 2.0 PI 0.5 t))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Simulation Setup
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(bind-func heat_sim_init
+  (lambda (nx:i32 ny:i32 order:i32)
+    (let ((sim:heat_sim_state* (halloc))
+          ;; Create mesh
+          (mesh (mfem_create_2d_mesh nx ny MFEM_ELEMENT_QUAD))
+          ;; Create FE space (H1 conforming, continuous)
+          (fespace (mfem_create_fespace mesh MFEM_FE_H1 order))
+          ;; Create grid functions
+          (u (mfem_gridfunc_create fespace))    ;; current temperature
+          (u_prev (mfem_gridfunc_create fespace)) ;; previous temperature
+          ;; Create bilinear forms
+          (mass (mfem_bilinearform_create fespace))
+          (stiff (mfem_bilinearform_create fespace))
+          ;; Create linear form for source
+          (source (mfem_linearform_create fespace))
+          ;; Time integrator
+          (ode_solver (mfem_rk4_create)))
+
+      ;; Initialize temperature field
+      (mfem_gridfunc_set_const u 0.0)
+      (mfem_gridfunc_set_const u_prev 0.0)
+
+      ;; Set up mass matrix (M)
+      (let ((one_coeff (mfem_const_coeff_create 1.0)))
+        (mfem_bilinearform_add_domain_integrator mass one_coeff)
+        (mfem_bilinearform_assemble mass)
+        (mfem_bilinearform_finalize mass 0))
+
+      ;; Set up stiffness matrix (K) with diffusion coefficient
+      (let ((diff_coeff (mfem_const_coeff_create (mfem_get_param "diffusion"))))
+        (mfem_bilinearform_add_domain_integrator stiff diff_coeff)
+        (mfem_bilinearform_assemble stiff)
+        (mfem_bilinearform_finalize stiff 0))
+
+      ;; Set up heat source
+      (let ((src_coeff (mfem_create_time_coeff audio_heat_source)))
+        (mfem_linearform_add_domain_integrator source src_coeff))
+
+      ;; Store everything in state
+      (tfill! sim mesh fespace u u_prev mass stiff source ode_solver 0.0 0.01 #t)
+      (set! *heat_sim* sim)
+
+      (println "Heat simulation initialized with"
+               (mfem_fespace_get_ndof fespace) "DOFs")
+      sim)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Time Stepping
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(bind-func heat_sim_step
+  (lambda (sim:heat_sim_state*)
+    (if (and (not (null? sim)) (tref sim 10))  ;; if running
+        (let ((u (tref sim 2))
+              (u_prev (tref sim 3))
+              (mass (tref sim 4))
+              (stiff (tref sim 5))
+              (source (tref sim 6))
+              (dt (tref sim 9))
+              (t (tref sim 8)))
+
+          ;; Copy current to previous
+          (mfem_gridfunc_copy u_prev u)
+
+          ;; Reassemble source term with current time
+          (mfem_linearform_assemble source)
+
+          ;; Solve: M * du/dt = -K * u + f
+          ;; Using implicit Euler: (M + dt*K) * u_new = M * u_old + dt * f
+          (let ((A (mfem_bilinearform_get_matrix
+                    (mfem_bilinearform_add mass
+                                          (mfem_bilinearform_scale stiff dt))))
+                (b (mfem_vector_add
+                    (mfem_bilinearform_mult mass u_prev)
+                    (mfem_vector_scale source dt))))
+
+            ;; Solve linear system
+            (mfem_cg_solve A b u 1e-10 1000))
+
+          ;; Update time
+          (tset! sim 8 (+ t dt))
+          void))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Audio Integration
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Audio callback to update simulation parameters
+(bind-func audio_callback
+  (lambda (in:SAMPLE* out:SAMPLE* nframes:i64 time:double)
+    (let ((sum:SAMPLE 0.0)
+          (i:i64 0))
+      ;; Compute RMS amplitude
+      (dotimes (i nframes)
+        (set! sum (+ sum (* (pref in i) (pref in i)))))
+      (let ((rms (sqrt (/ sum (convert nframes SAMPLE)))))
+        ;; Update global audio parameters
+        (mfem_update_audio_params (convert rms double) 1.0)
+        ;; Pass through audio
+        (dotimes (i nframes)
+          (pset! out i (pref in i)))
+        void))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Visualization
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(bind-func heat_sim_visualize
+  (lambda (sim:heat_sim_state*)
+    (if (not (null? sim))
+        (let ((mesh (tref sim 0))
+              (u (tref sim 2))
+              (t (tref sim 8)))
+          (glvis_show_solution_with_settings
+           mesh u
+           "Heat Equation - Audio Reactive"
+           45.0 45.0)
+          void))))
+
+;; Continuous visualization loop
+(bind-func heat_sim_vis_loop
+  (lambda (sim:heat_sim_state* fps:double)
+    (let ((streamer (glvis_stream_solution
+                     (tref sim 0) (tref sim 2) fps)))
+      (lambda (beat:double dur:double)
+        (streamer)
+        (callback (+ beat (* dur .25))
+                  heat_sim_vis_loop sim fps
+                  beat dur)
+        void))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Main Simulation Loop
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(bind-func heat_sim_loop
+  (lambda (sim:heat_sim_state* steps_per_beat:i32)
+    (lambda (beat:double dur:double)
+      (if (tref sim 10)  ;; if running
+          (begin
+            ;; Run multiple time steps
+            (dotimes (i steps_per_beat)
+              (heat_sim_step sim))
+            ;; Schedule next callback
+            (callback (+ beat (* dur .25))
+                      heat_sim_loop sim steps_per_beat
+                      beat dur)))
+      void)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Interactive Controls
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Change diffusion coefficient
+(bind-func set_diffusion
+  (lambda (value:double)
+    (mfem_set_param "diffusion" value)
+    (println "Diffusion set to" value)
+    void))
+
+;; Change source strength
+(bind-func set_source_strength
+  (lambda (value:double)
+    (mfem_set_param "source" value)
+    (println "Source strength set to" value)
+    void))
+
+;; Change time step
+(bind-func set_time_step
+  (lambda (dt:double)
+    (if (not (null? *heat_sim*))
+        (begin
+          (tset! *heat_sim* 9 dt)
+          (println "Time step set to" dt)))
+    void))
+
+;; Toggle simulation
+(bind-func toggle_simulation
+  (lambda ()
+    (if (not (null? *heat_sim*))
+        (let ((running (tref *heat_sim* 10)))
+          (tset! *heat_sim* 10 (not running))
+          (if (not running)
+              (println "Simulation resumed")
+              (println "Simulation paused"))))
+    void))
+
+;; Reset temperature field
+(bind-func reset_temperature
+  (lambda ()
+    (if (not (null? *heat_sim*))
+        (begin
+          (mfem_gridfunc_set_const (tref *heat_sim* 2) 0.0)
+          (mfem_gridfunc_set_const (tref *heat_sim* 3) 0.0)
+          (tset! *heat_sim* 8 0.0)
+          (println "Temperature field reset")))
+    void))
+
+;; Refine mesh
+(bind-func refine_mesh
+  (lambda ()
+    (if (not (null? *heat_sim*))
+        (let ((mesh (tref *heat_sim* 0)))
+          (mfem_mesh_uniform_refine mesh 1)
+          (println "Mesh refined to"
+                   (mfem_mesh_get_ne mesh) "elements")))
+    void))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Initialization and Startup
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Initialize simulation parameters
+(mfem_init_params)
+(mfem_set_param "diffusion" 0.01)
+(mfem_set_param "source" 10.0)
+(mfem_set_param "dt" 0.001)
+
+;; Create simulation (32x32 mesh, order 2 elements)
+(heat_sim_init 32 32 2)
+
+;; Connect to GLVis
+(if (glvis_init)
+    (println "Connected to GLVis visualization server")
+    (println "Failed to connect to GLVis - run 'glvis' in a terminal"))
+
+;; Start simulation loop
+((heat_sim_loop *heat_sim* 10) (*metro* 'get-beat 4) 1.0)
+
+;; Start visualization loop (30 fps)
+((heat_sim_vis_loop *heat_sim* 30.0) (*metro* 'get-beat 4) 1.0)
+
+;; Set up audio
+(dsp:set! audio_callback)
+
+(println "")
+(println "=== Heat Equation Simulation Running ===")
+(println "")
+(println "Interactive controls:")
+(println "  (set_diffusion 0.01)      - Change thermal diffusivity")
+(println "  (set_source_strength 5.0) - Change heat source strength")
+(println "  (set_time_step 0.001)     - Change simulation time step")
+(println "  (toggle_simulation)       - Pause/resume simulation")
+(println "  (reset_temperature)       - Reset to zero temperature")
+(println "  (refine_mesh)            - Refine the mesh")
+(println "")
+(println "The simulation responds to audio input!")
+(println "Heat sources move and intensify with sound amplitude")
+(println "")

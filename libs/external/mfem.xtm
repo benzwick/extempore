@@ -1,0 +1,365 @@
+;;; mfem.xtm -- MFEM (Modular Finite Element Methods) library bindings
+
+;; Author: Benjamin F. Zwick
+;; Keywords: extempore
+;; Required dylibs: libmfem
+
+;;; Commentary:
+
+;; MFEM is a free, lightweight, scalable C++ library for finite element methods.
+;; This binding provides access to MFEM's core functionality for real-time
+;; interactive simulations on HPC systems.
+
+;;; Code:
+
+;; lib loading config
+(if *impc:compiler:with-cache* (sys:load "libs/aot-cache/mfem.xtm" 'quiet))
+(sys:load-preload-check 'mfem)
+(define *xtmlib-mfem-loaded* #t)
+
+(impc:aot:suppress-aot-do
+ (sys:load "libs/base/base.xtm")
+ (sys:load "libs/core/math.xtm"))
+(impc:aot:insert-forms
+ (sys:load "libs/base/base.xtm" 'quiet)
+ (sys:load "libs/core/math.xtm" 'quiet))
+
+(impc:aot:insert-header "xtmfem")
+
+;; bind dynamic library
+(bind-dylib libmfem
+  (cond ((string=? (sys:platform) "OSX") "libmfem.dylib")
+        ((string=? (sys:platform) "Linux") "libmfem.so")
+        ((string=? (sys:platform) "Windows") "mfem.dll")))
+
+;; LLVM optimization
+(impc:aot:import-ll "xtmfem")
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Core MFEM Types
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Opaque handle types for core MFEM classes
+(bind-type mfem_Mesh i8*)
+(bind-type mfem_ParMesh i8*)
+(bind-type mfem_FiniteElementSpace i8*)
+(bind-type mfem_ParFiniteElementSpace i8*)
+(bind-type mfem_GridFunction i8*)
+(bind-type mfem_ParGridFunction i8*)
+(bind-type mfem_LinearForm i8*)
+(bind-type mfem_ParLinearForm i8*)
+(bind-type mfem_BilinearForm i8*)
+(bind-type mfem_ParBilinearForm i8*)
+(bind-type mfem_SparseMatrix i8*)
+(bind-type mfem_HypreParMatrix i8*)
+(bind-type mfem_Vector i8*)
+(bind-type mfem_HypreParVector i8*)
+(bind-type mfem_Coefficient i8*)
+(bind-type mfem_VectorCoefficient i8*)
+(bind-type mfem_MatrixCoefficient i8*)
+(bind-type mfem_IntegrationRules i8*)
+(bind-type mfem_ODESolver i8*)
+(bind-type mfem_TimeDependentOperator i8*)
+
+;; MPI types
+(bind-type MPI_Comm i32)
+(bind-val MPI_COMM_WORLD MPI_Comm)
+
+;; Refinement types
+(bind-val MFEM_REFINE_UNIFORM i32 0)
+(bind-val MFEM_REFINE_ADAPTIVE i32 1)
+
+;; Element types
+(bind-val MFEM_ELEMENT_TRIANGLE i32 0)
+(bind-val MFEM_ELEMENT_QUAD i32 1)
+(bind-val MFEM_ELEMENT_TET i32 2)
+(bind-val MFEM_ELEMENT_HEX i32 3)
+
+;; Finite element families
+(bind-val MFEM_FE_H1 i32 0)    ;; H1 conforming (continuous)
+(bind-val MFEM_FE_L2 i32 1)    ;; L2 conforming (discontinuous)
+(bind-val MFEM_FE_RT i32 2)    ;; H(div) conforming (Raviart-Thomas)
+(bind-val MFEM_FE_ND i32 3)    ;; H(curl) conforming (Nedelec)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Mesh Functions
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Create mesh from file
+(bind-lib libmfem mfem_mesh_load_file [mfem_Mesh,i8*]*)
+(bind-lib libmfem mfem_parmesh_load_file [mfem_ParMesh,MPI_Comm,i8*]*)
+
+;; Create simple meshes
+(bind-lib libmfem mfem_mesh_make_cartesian_2d [mfem_Mesh,i32,i32,i32,double,double]*)
+(bind-lib libmfem mfem_mesh_make_cartesian_3d [mfem_Mesh,i32,i32,i32,i32,double,double,double]*)
+
+;; Mesh operations
+(bind-lib libmfem mfem_mesh_uniform_refine [void,mfem_Mesh,i32]*)
+(bind-lib libmfem mfem_mesh_save [void,mfem_Mesh,i8*]*)
+(bind-lib libmfem mfem_mesh_get_ne [i32,mfem_Mesh]*)  ;; number of elements
+(bind-lib libmfem mfem_mesh_get_nv [i32,mfem_Mesh]*)  ;; number of vertices
+(bind-lib libmfem mfem_mesh_get_dimension [i32,mfem_Mesh]*)
+(bind-lib libmfem mfem_mesh_destroy [void,mfem_Mesh]*)
+
+;; Parallel mesh operations
+(bind-lib libmfem mfem_parmesh_uniform_refine [void,mfem_ParMesh,i32]*)
+(bind-lib libmfem mfem_parmesh_save [void,mfem_ParMesh,i8*]*)
+(bind-lib libmfem mfem_parmesh_destroy [void,mfem_ParMesh]*)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Finite Element Space Functions
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Create FE space
+(bind-lib libmfem mfem_fespace_create [mfem_FiniteElementSpace,mfem_Mesh,i32,i32]*)
+(bind-lib libmfem mfem_parfespace_create [mfem_ParFiniteElementSpace,mfem_ParMesh,i32,i32]*)
+
+;; FE space operations
+(bind-lib libmfem mfem_fespace_get_ndof [i32,mfem_FiniteElementSpace]*)
+(bind-lib libmfem mfem_fespace_get_order [i32,mfem_FiniteElementSpace]*)
+(bind-lib libmfem mfem_fespace_destroy [void,mfem_FiniteElementSpace]*)
+(bind-lib libmfem mfem_parfespace_destroy [void,mfem_ParFiniteElementSpace]*)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Grid Function Operations
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Create grid functions
+(bind-lib libmfem mfem_gridfunc_create [mfem_GridFunction,mfem_FiniteElementSpace]*)
+(bind-lib libmfem mfem_pargridfunc_create [mfem_ParGridFunction,mfem_ParFiniteElementSpace]*)
+
+;; Grid function operations
+(bind-lib libmfem mfem_gridfunc_set_const [void,mfem_GridFunction,double]*)
+(bind-lib libmfem mfem_gridfunc_project_coeff [void,mfem_GridFunction,mfem_Coefficient]*)
+(bind-lib libmfem mfem_gridfunc_save [void,mfem_GridFunction,i8*]*)
+(bind-lib libmfem mfem_gridfunc_load [void,mfem_GridFunction,i8*]*)
+(bind-lib libmfem mfem_gridfunc_get_value [double,mfem_GridFunction,i32,double*]*)
+(bind-lib libmfem mfem_gridfunc_set_value [void,mfem_GridFunction,i32,double]*)
+(bind-lib libmfem mfem_gridfunc_destroy [void,mfem_GridFunction]*)
+(bind-lib libmfem mfem_pargridfunc_destroy [void,mfem_ParGridFunction]*)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Coefficient Functions
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Create coefficients
+(bind-lib libmfem mfem_const_coeff_create [mfem_Coefficient,double]*)
+(bind-lib libmfem mfem_func_coeff_create [mfem_Coefficient,[double,double*,double]*]*)
+(bind-lib libmfem mfem_gridfunc_coeff_create [mfem_Coefficient,mfem_GridFunction]*)
+(bind-lib libmfem mfem_coeff_destroy [void,mfem_Coefficient]*)
+
+;; Vector coefficients
+(bind-lib libmfem mfem_const_vec_coeff_create [mfem_VectorCoefficient,i32,double*]*)
+(bind-lib libmfem mfem_vec_coeff_destroy [void,mfem_VectorCoefficient]*)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Forms and Operators
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Linear forms
+(bind-lib libmfem mfem_linearform_create [mfem_LinearForm,mfem_FiniteElementSpace]*)
+(bind-lib libmfem mfem_linearform_add_domain_integrator [void,mfem_LinearForm,mfem_Coefficient]*)
+(bind-lib libmfem mfem_linearform_assemble [void,mfem_LinearForm]*)
+(bind-lib libmfem mfem_linearform_destroy [void,mfem_LinearForm]*)
+
+;; Bilinear forms
+(bind-lib libmfem mfem_bilinearform_create [mfem_BilinearForm,mfem_FiniteElementSpace]*)
+(bind-lib libmfem mfem_bilinearform_add_domain_integrator [void,mfem_BilinearForm,mfem_Coefficient]*)
+(bind-lib libmfem mfem_bilinearform_assemble [void,mfem_BilinearForm]*)
+(bind-lib libmfem mfem_bilinearform_finalize [void,mfem_BilinearForm,i32]*)
+(bind-lib libmfem mfem_bilinearform_get_matrix [mfem_SparseMatrix,mfem_BilinearForm]*)
+(bind-lib libmfem mfem_bilinearform_destroy [void,mfem_BilinearForm]*)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Linear Solvers
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Direct solvers
+(bind-lib libmfem mfem_umfpack_solve [void,mfem_SparseMatrix,mfem_Vector,mfem_Vector]*)
+
+;; Iterative solvers
+(bind-lib libmfem mfem_cg_solve [i32,mfem_SparseMatrix,mfem_Vector,mfem_Vector,double,i32]*)
+(bind-lib libmfem mfem_gmres_solve [i32,mfem_SparseMatrix,mfem_Vector,mfem_Vector,double,i32]*)
+(bind-lib libmfem mfem_bicgstab_solve [i32,mfem_SparseMatrix,mfem_Vector,mfem_Vector,double,i32]*)
+
+;; AMG (Algebraic Multigrid)
+(bind-lib libmfem mfem_amg_solve [i32,mfem_HypreParMatrix,mfem_HypreParVector,mfem_HypreParVector,double,i32]*)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Time Integration
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; ODE solvers
+(bind-lib libmfem mfem_forward_euler_create [mfem_ODESolver]*)
+(bind-lib libmfem mfem_rk2_create [mfem_ODESolver]*)
+(bind-lib libmfem mfem_rk4_create [mfem_ODESolver]*)
+(bind-lib libmfem mfem_implicit_euler_create [mfem_ODESolver]*)
+(bind-lib libmfem mfem_sdirk23_create [mfem_ODESolver]*)
+(bind-lib libmfem mfem_sdirk34_create [mfem_ODESolver]*)
+
+(bind-lib libmfem mfem_odesolver_init [void,mfem_ODESolver,mfem_TimeDependentOperator]*)
+(bind-lib libmfem mfem_odesolver_step [void,mfem_ODESolver,mfem_Vector,double,double]*)
+(bind-lib libmfem mfem_odesolver_destroy [void,mfem_ODESolver]*)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Helper Functions
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Create a simple 2D mesh with specified dimensions and elements
+(bind-func mfem_create_2d_mesh
+  (lambda (nx:i32 ny:i32 elem_type:i32)
+    (let ((mesh (mfem_mesh_make_cartesian_2d nx ny elem_type 1.0 1.0)))
+      mesh)))
+
+;; Create a simple 3D mesh
+(bind-func mfem_create_3d_mesh
+  (lambda (nx:i32 ny:i32 nz:i32 elem_type:i32)
+    (let ((mesh (mfem_mesh_make_cartesian_3d nx ny nz elem_type 1.0 1.0 1.0)))
+      mesh)))
+
+;; Create finite element space with specified order
+(bind-func mfem_create_fespace
+  (lambda (mesh:mfem_Mesh fe_type:i32 order:i32)
+    (let ((fespace (mfem_fespace_create mesh fe_type order)))
+      (printf "Created FE space with %d DOFs\n" (mfem_fespace_get_ndof fespace))
+      fespace)))
+
+;; Initialize a grid function with a constant value
+(bind-func mfem_init_gridfunc
+  (lambda (fespace:mfem_FiniteElementSpace value:double)
+    (let ((gf (mfem_gridfunc_create fespace)))
+      (mfem_gridfunc_set_const gf value)
+      gf)))
+
+;; Callback function type for time-dependent coefficients
+(bind-alias mfem_coeff_func [double,double*,double]*)
+
+;; Create a time-dependent coefficient from a callback
+(bind-func mfem_create_time_coeff
+  (lambda (func:mfem_coeff_func)
+    (mfem_func_coeff_create func)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Audio-Reactive Coefficient
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Global audio amplitude for driving simulations
+(bind-val *mfem_audio_amplitude* double 0.0)
+(bind-val *mfem_audio_frequency* double 440.0)
+
+;; Audio-driven coefficient function
+(bind-func mfem_audio_coeff_func:mfem_coeff_func
+  (lambda (x t)
+    (let ((amp *mfem_audio_amplitude*)
+          (freq *mfem_audio_frequency*)
+          (spatial_mod (+ 1.0 (* 0.1 (cos (* 2.0 PI (pref x 0))))))
+          (time_mod (+ 1.0 (* amp (sin (* 2.0 PI freq t))))))
+      (* spatial_mod time_mod))))
+
+;; Create audio-driven coefficient
+(bind-func mfem_create_audio_coeff
+  (lambda ()
+    (mfem_create_time_coeff mfem_audio_coeff_func)))
+
+;; Update audio parameters from Extempore audio engine
+(bind-func mfem_update_audio_params
+  (lambda (amp:double freq:double)
+    (set! *mfem_audio_amplitude* amp)
+    (set! *mfem_audio_frequency* freq)
+    void))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Live Parameter Control
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Parameter structure for live control
+(bind-type mfem_sim_params <double,double,double,double,i32>
+  (printer? . #f))
+;; Fields: dt, diffusion, source_strength, viscosity, solver_type
+
+(bind-val *mfem_global_params* mfem_sim_params)
+
+;; Initialize parameters
+(bind-func mfem_init_params
+  (lambda ()
+    (tfill! *mfem_global_params* 0.01 0.1 1.0 0.001 0)
+    void))
+
+;; Live parameter update
+(bind-func mfem_set_param
+  (lambda (param_name:i8* value:double)
+    (cond ((= (strcmp param_name "dt") 0)
+           (tset! *mfem_global_params* 0 value))
+          ((= (strcmp param_name "diffusion") 0)
+           (tset! *mfem_global_params* 1 value))
+          ((= (strcmp param_name "source") 0)
+           (tset! *mfem_global_params* 2 value))
+          ((= (strcmp param_name "viscosity") 0)
+           (tset! *mfem_global_params* 3 value))
+          (else (printf "Unknown parameter: %s\n" param_name)))
+    void))
+
+;; Get parameter value
+(bind-func mfem_get_param
+  (lambda (param_name:i8*)
+    (cond ((= (strcmp param_name "dt") 0)
+           (tref *mfem_global_params* 0))
+          ((= (strcmp param_name "diffusion") 0)
+           (tref *mfem_global_params* 1))
+          ((= (strcmp param_name "source") 0)
+           (tref *mfem_global_params* 2))
+          ((= (strcmp param_name "viscosity") 0)
+           (tref *mfem_global_params* 3))
+          (else 0.0))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; MPI Support
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; MPI initialization
+(bind-lib libmfem MPI_Init [i32,i32*,i8***]*)
+(bind-lib libmfem MPI_Finalize [i32]*)
+(bind-lib libmfem MPI_Comm_rank [i32,MPI_Comm,i32*]*)
+(bind-lib libmfem MPI_Comm_size [i32,MPI_Comm,i32*]*)
+(bind-lib libmfem MPI_Barrier [i32,MPI_Comm]*)
+
+;; MPI helper functions
+(bind-func mfem_mpi_init
+  (lambda ()
+    (let ((rank:i32* (salloc))
+          (size:i32* (salloc)))
+      (MPI_Init null null)
+      (MPI_Comm_rank MPI_COMM_WORLD rank)
+      (MPI_Comm_size MPI_COMM_WORLD size)
+      (printf "MPI initialized: rank %d of %d\n" (pref rank 0) (pref size 0))
+      void)))
+
+(bind-func mfem_mpi_finalize
+  (lambda ()
+    (MPI_Finalize)
+    (printf "MPI finalized\n")
+    void))
+
+(bind-func mfem_mpi_rank
+  (lambda ()
+    (let ((rank:i32* (salloc)))
+      (MPI_Comm_rank MPI_COMM_WORLD rank)
+      (pref rank 0))))
+
+(bind-func mfem_mpi_size
+  (lambda ()
+    (let ((size:i32* (salloc)))
+      (MPI_Comm_size MPI_COMM_WORLD size)
+      (pref size 0))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Cleanup
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(impc:aot:insert-footer "xtmfem")
+(define *xtmlib-mfem-loaded* #t)
+
+;; Initialize default parameters on load
+(mfem_init_params)
+
+(println "MFEM library loaded successfully")

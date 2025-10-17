@@ -10,12 +10,17 @@ option(PACKAGE "set up install targets for packaging" OFF)
 
 option(EXTERNAL_SHLIBS_AUDIO "download & build audio-related external library dependencies" ON)
 option(EXTERNAL_SHLIBS_GRAPHICS "download & build graphics-related external library dependencies" ON)
-set(EXTERNAL_SHLIBS (EXTERNAL_SHLIBS_AUDIO OR EXTERNAL_SHLIBS_GRAPHICS))
+option(EXTERNAL_SHLIBS_SIMULATION "download & build simulation library dependencies (MFEM, GLVis)" OFF)
+set(EXTERNAL_SHLIBS (EXTERNAL_SHLIBS_AUDIO OR EXTERNAL_SHLIBS_GRAPHICS OR EXTERNAL_SHLIBS_SIMULATION))
 
 option(EXT_DYLIB "build extempore as a dynamic library" OFF)
 
 ## see note about the status of the Jack backend in BUILDING.md
 option(JACK "use the Jack Portaudio backend" OFF)
+
+## MFEM/Simulation options
+option(MFEM_USE_CUDA "Enable CUDA support in MFEM" OFF)
+option(MFEM_USE_HIP "Enable HIP/ROCm support in MFEM" OFF)
 
 ## this is useful because we can group targets together (e.g. all the AOT libs)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
@@ -281,7 +286,7 @@ if (EXT_DYLIB)
     runtime/scheme.xtm
   )
 
-  add_library(extempore SHARED 
+  add_library(extempore SHARED
     src/Extempore.cpp
     src/AudioDevice.cpp
     src/EXTZones.cpp
@@ -368,7 +373,7 @@ elseif(EXT_SHARE_DIR)
     PRIVATE -DEXT_SHARE_DIR="${EXT_SHARE_DIR}")
 elseif(EXT_DYLIB)
   target_compile_definitions(extempore
-    PRIVATE -DEXT_DYLIB=1 
+    PRIVATE -DEXT_DYLIB=1
     PRIVATE -DEXT_SHARE_DIR="."
   )
 else()
@@ -735,6 +740,58 @@ if(UNIX)
     add_dependencies(aot_external_graphics external_shlibs_graphics)
 
   endif(EXTERNAL_SHLIBS_GRAPHICS)
+
+  if(EXTERNAL_SHLIBS_SIMULATION)
+
+    # MFEM - Modular Finite Element Methods library
+    ExternalProject_Add(mfem
+      PREFIX mfem
+      URL https://github.com/mfem/mfem/archive/v4.8.tar.gz
+      CMAKE_ARGS
+      -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+      -DCMAKE_C_FLAGS=${EXT_DEPS_C_FLAGS}
+      -DCMAKE_CXX_FLAGS=${EXT_DEPS_CXX_FLAGS}
+      -DMFEM_USE_MPI=ON
+      -DMFEM_USE_METIS_5=ON
+      -DMFEM_USE_OPENMP=ON
+      -DMFEM_USE_CUDA=${MFEM_USE_CUDA}
+      -DMFEM_USE_HIP=${MFEM_USE_HIP}
+      -DBUILD_SHARED_LIBS=ON
+      -DCMAKE_INSTALL_PREFIX=${EXT_DEPS_INSTALL_DIR})
+    set_target_properties(mfem PROPERTIES FOLDER EXTERNAL_SHLIBS)
+
+    # GLVis - OpenGL visualization for MFEM
+    ExternalProject_Add(glvis
+      PREFIX glvis
+      URL https://github.com/GLVis/glvis/archive/v4.4.tar.gz
+      CMAKE_ARGS
+      -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+      -DCMAKE_C_FLAGS=${EXT_DEPS_C_FLAGS}
+      -DCMAKE_CXX_FLAGS=${EXT_DEPS_CXX_FLAGS}
+      -DMFEM_DIR=${EXT_DEPS_INSTALL_DIR}
+      -DCMAKE_INSTALL_PREFIX=${EXT_DEPS_INSTALL_DIR})
+    set_target_properties(glvis PROPERTIES FOLDER EXTERNAL_SHLIBS)
+    add_dependencies(glvis mfem)
+
+    add_custom_target(aot_external_simulation ALL)
+    set_target_properties(aot_external_simulation PROPERTIES FOLDER AOT)
+
+    aotcompile_lib(libs/external/mfem.xtm simulation base math)
+    aotcompile_lib(libs/external/glvis.xtm simulation base mfem)
+
+    add_custom_target(external_shlibs_simulation
+      COMMENT "moving shared libs into ${EXT_PLATFORM_SHLIBS_DIR}"
+      DEPENDS LLVM mfem glvis
+      COMMAND ${CMAKE_COMMAND} -E make_directory ${EXT_PLATFORM_SHLIBS_DIR}
+      COMMAND ${CMAKE_COMMAND} -E copy libmfem${CMAKE_SHARED_LIBRARY_SUFFIX} ${EXT_PLATFORM_SHLIBS_DIR}
+      COMMAND ${CMAKE_COMMAND} -E copy libglvis${CMAKE_SHARED_LIBRARY_SUFFIX} ${EXT_PLATFORM_SHLIBS_DIR}
+      WORKING_DIRECTORY ${EXT_DEPS_INSTALL_DIR}/lib)
+    set_target_properties(external_shlibs_simulation PROPERTIES FOLDER EXTERNAL_SHLIBS)
+
+    add_dependencies(aot_external_simulation extempore)
+    add_dependencies(aot_external_simulation external_shlibs_simulation)
+
+  endif(EXTERNAL_SHLIBS_SIMULATION)
 endif(UNIX)
 
 # aaand here's the Windows version

@@ -748,8 +748,39 @@ if(UNIX)
 
   if(EXTERNAL_SHLIBS_SIMULATION)
 
+    # HYPRE - High-performance preconditioners for MFEM
+    if(MFEM_USE_MPI)
+      ExternalProject_Add(hypre
+        PREFIX hypre
+        GIT_REPOSITORY https://github.com/hypre-space/hypre.git
+        GIT_TAG v2.31.0
+        GIT_SHALLOW TRUE
+        UPDATE_DISCONNECTED TRUE
+        SOURCE_SUBDIR src
+        CMAKE_ARGS
+        -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+        -DCMAKE_C_FLAGS=${EXT_DEPS_C_FLAGS}
+        -DCMAKE_CXX_FLAGS=${EXT_DEPS_CXX_FLAGS}
+        -DHYPRE_ENABLE_SHARED=ON
+        -DHYPRE_WITH_MPI=ON
+        -DCMAKE_INSTALL_PREFIX=${EXT_DEPS_INSTALL_DIR})
+      set_target_properties(hypre PROPERTIES FOLDER EXTERNAL_SHLIBS)
+
+      # METIS - Partitioning algorithms for MFEM
+      ExternalProject_Add(metis
+        PREFIX metis
+        GIT_REPOSITORY https://github.com/mfem/tpls
+        GIT_TAG b60352fbe9675d374b00828055e55be4584c7995
+        GIT_SHALLOW TRUE
+        UPDATE_DISCONNECTED TRUE
+        CONFIGURE_COMMAND tar -xzf <SOURCE_DIR>/metis-4.0.3-mac.tgz --strip=1 -C <BINARY_DIR>
+        BUILD_COMMAND make -C <BINARY_DIR> COPTIONS=-Wno-incompatible-pointer-types
+        BUILD_IN_SOURCE FALSE
+        INSTALL_COMMAND ${CMAKE_COMMAND} -E make_directory ${EXT_DEPS_INSTALL_DIR}/lib && ${CMAKE_COMMAND} -E copy <BINARY_DIR>/libmetis.a ${EXT_DEPS_INSTALL_DIR}/lib/)
+      set_target_properties(metis PROPERTIES FOLDER EXTERNAL_SHLIBS)
+    endif()
+
     # MFEM - Modular Finite Element Methods library
-    # Using MFEM's own dependency management via FETCH_TPLS
     set(MFEM_CMAKE_ARGS
       -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
       -DCMAKE_C_FLAGS=${EXT_DEPS_C_FLAGS}
@@ -762,10 +793,11 @@ if(UNIX)
       -DMFEM_USE_HIP=${MFEM_USE_HIP}
       -DCMAKE_INSTALL_PREFIX=${EXT_DEPS_INSTALL_DIR})
 
-    # If parallel build, use MFEM's built-in fetching of HYPRE and METIS
+    # If parallel build, point to our HYPRE and METIS
     if(MFEM_USE_MPI)
       list(APPEND MFEM_CMAKE_ARGS
-        -DFETCH_TPLS=YES
+        -DHYPRE_DIR=${EXT_DEPS_INSTALL_DIR}
+        -DMETIS_DIR=${EXT_DEPS_INSTALL_DIR}
         -DMFEM_USE_METIS_5=YES)
     endif()
 
@@ -791,6 +823,11 @@ if(UNIX)
       CMAKE_ARGS ${MFEM_CMAKE_ARGS})
     set_target_properties(mfem PROPERTIES FOLDER EXTERNAL_SHLIBS)
 
+    # MFEM depends on hypre and metis if MPI is enabled
+    if(MFEM_USE_MPI)
+      add_dependencies(mfem hypre metis)
+    endif()
+
     # GLVis - OpenGL visualization for MFEM
     ExternalProject_Add(glvis
       PREFIX glvis
@@ -810,13 +847,26 @@ if(UNIX)
     aotcompile_lib(libs/external/mfem.xtm simulation base math)
     aotcompile_lib(libs/external/glvis.xtm simulation base mfem)
 
-    add_custom_target(external_shlibs_simulation
-      COMMENT "moving shared libs into ${EXT_PLATFORM_SHLIBS_DIR}"
-      DEPENDS LLVM mfem glvis
-      COMMAND ${CMAKE_COMMAND} -E make_directory ${EXT_PLATFORM_SHLIBS_DIR}
-      COMMAND ${CMAKE_COMMAND} -E copy libmfem${CMAKE_SHARED_LIBRARY_SUFFIX} ${EXT_PLATFORM_SHLIBS_DIR}
-      COMMAND ${CMAKE_COMMAND} -E copy libglvis${CMAKE_SHARED_LIBRARY_SUFFIX} ${EXT_PLATFORM_SHLIBS_DIR}
-      WORKING_DIRECTORY ${EXT_DEPS_INSTALL_DIR}/lib)
+    # Copy simulation libraries to platform-shlibs directory
+    if(MFEM_USE_MPI)
+      add_custom_target(external_shlibs_simulation
+        COMMENT "moving shared libs into ${EXT_PLATFORM_SHLIBS_DIR}"
+        DEPENDS LLVM hypre metis mfem glvis
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${EXT_PLATFORM_SHLIBS_DIR}
+        COMMAND ${CMAKE_COMMAND} -E copy libHYPRE${CMAKE_SHARED_LIBRARY_SUFFIX} ${EXT_PLATFORM_SHLIBS_DIR}
+        COMMAND ${CMAKE_COMMAND} -E copy libmetis${CMAKE_SHARED_LIBRARY_SUFFIX} ${EXT_PLATFORM_SHLIBS_DIR}
+        COMMAND ${CMAKE_COMMAND} -E copy libmfem${CMAKE_SHARED_LIBRARY_SUFFIX} ${EXT_PLATFORM_SHLIBS_DIR}
+        COMMAND ${CMAKE_COMMAND} -E copy libglvis${CMAKE_SHARED_LIBRARY_SUFFIX} ${EXT_PLATFORM_SHLIBS_DIR}
+        WORKING_DIRECTORY ${EXT_DEPS_INSTALL_DIR}/lib)
+    else()
+      add_custom_target(external_shlibs_simulation
+        COMMENT "moving shared libs into ${EXT_PLATFORM_SHLIBS_DIR}"
+        DEPENDS LLVM mfem glvis
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${EXT_PLATFORM_SHLIBS_DIR}
+        COMMAND ${CMAKE_COMMAND} -E copy libmfem${CMAKE_SHARED_LIBRARY_SUFFIX} ${EXT_PLATFORM_SHLIBS_DIR}
+        COMMAND ${CMAKE_COMMAND} -E copy libglvis${CMAKE_SHARED_LIBRARY_SUFFIX} ${EXT_PLATFORM_SHLIBS_DIR}
+        WORKING_DIRECTORY ${EXT_DEPS_INSTALL_DIR}/lib)
+    endif()
     set_target_properties(external_shlibs_simulation PROPERTIES FOLDER EXTERNAL_SHLIBS)
 
     add_dependencies(aot_external_simulation extempore)

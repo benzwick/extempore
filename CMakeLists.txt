@@ -774,7 +774,7 @@ if(UNIX)
         GIT_SHALLOW TRUE
         UPDATE_DISCONNECTED TRUE
         CONFIGURE_COMMAND tar -xzf <SOURCE_DIR>/metis-4.0.3.tar.gz --strip=1 -C <BINARY_DIR>
-        BUILD_COMMAND make -C <BINARY_DIR> COPTIONS=-Wno-incompatible-pointer-types
+        BUILD_COMMAND make -C <BINARY_DIR> "COPTIONS=-Wno-incompatible-pointer-types -Wno-implicit-function-declaration -Wno-implicit-int"
         BUILD_IN_SOURCE TRUE
         INSTALL_COMMAND ${CMAKE_COMMAND} -E make_directory ${EXT_DEPS_INSTALL_DIR}/lib ${EXT_DEPS_INSTALL_DIR}/include
                 COMMAND ${CMAKE_COMMAND} -E copy <BINARY_DIR>/libmetis.a ${EXT_DEPS_INSTALL_DIR}/lib/

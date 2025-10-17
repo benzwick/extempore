@@ -1,10 +1,11 @@
 --- a/src/xtmnanovg.c
 +++ b/src/xtmnanovg.c
-@@ -22,9 +22,16 @@ int nvgInit(void){
+@@ -22,9 +22,17 @@ int nvgInit(void){
  }
 
  #elif __linux__
 -#include <GL/gl.h>
++#include <stdio.h>
 +#include <GL/glew.h>
 
  int nvgInit(){

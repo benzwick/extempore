@@ -776,7 +776,9 @@ if(UNIX)
         CONFIGURE_COMMAND tar -xzf <SOURCE_DIR>/metis-4.0.3-mac.tgz --strip=1 -C <BINARY_DIR>
         BUILD_COMMAND make -C <BINARY_DIR> COPTIONS=-Wno-incompatible-pointer-types
         BUILD_IN_SOURCE FALSE
-        INSTALL_COMMAND ${CMAKE_COMMAND} -E make_directory ${EXT_DEPS_INSTALL_DIR}/lib && ${CMAKE_COMMAND} -E copy <BINARY_DIR>/libmetis.a ${EXT_DEPS_INSTALL_DIR}/lib/)
+        INSTALL_COMMAND ${CMAKE_COMMAND} -E make_directory ${EXT_DEPS_INSTALL_DIR}/lib ${EXT_DEPS_INSTALL_DIR}/include
+                COMMAND ${CMAKE_COMMAND} -E copy <BINARY_DIR>/libmetis.a ${EXT_DEPS_INSTALL_DIR}/lib/
+                COMMAND ${CMAKE_COMMAND} -E copy <BINARY_DIR>/Lib/metis.h ${EXT_DEPS_INSTALL_DIR}/include/)
       set_target_properties(metis PROPERTIES FOLDER EXTERNAL_SHLIBS)
     endif()
 

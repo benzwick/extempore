@@ -770,6 +770,8 @@ if(UNIX)
 
     # Add CUDA architecture if CUDA is enabled
     if(MFEM_USE_CUDA)
+      find_package(CUDAToolkit REQUIRED)
+      message(STATUS "CUDA toolkit found at ${CUDAToolkit_ROOT}")
       list(APPEND MFEM_CMAKE_ARGS -DCUDA_ARCH=${CUDA_ARCH})
     endif()
 

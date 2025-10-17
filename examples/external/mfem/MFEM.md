@@ -44,6 +44,8 @@ make -j
 ```
 
 #### GPU Build with CUDA
+**Prerequisites**: CUDA Toolkit must be installed before building with CUDA support.
+
 For NVIDIA GPUs, you need to specify the compute capability (sm_XX):
 
 - **RTX 500/4000 Ada Generation (sm_89)**: Compute capability 8.9

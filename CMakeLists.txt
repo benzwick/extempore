@@ -663,6 +663,7 @@ if(UNIX)
     ExternalProject_Add(nanovg
       PREFIX nanovg
       URL https://github.com/extemporelang/nanovg/archive/3c60175fcc2e5fe305b04355cdce35d499c80310.tar.gz
+      PATCH_COMMAND patch -p1 < ${CMAKE_SOURCE_DIR}/extras/nanovg-gl-fix.patch
       CMAKE_ARGS
       -DEXTEMPORE_LIB_PATH=${CMAKE_SOURCE_DIR}/libs/platform-shlibs/extempore.lib
       -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}

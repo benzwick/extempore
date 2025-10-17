@@ -772,7 +772,9 @@ if(UNIX)
     if(MFEM_USE_CUDA)
       find_package(CUDAToolkit REQUIRED)
       message(STATUS "CUDA toolkit found at ${CUDAToolkit_ROOT}")
-      list(APPEND MFEM_CMAKE_ARGS -DCUDA_ARCH=${CUDA_ARCH})
+      list(APPEND MFEM_CMAKE_ARGS
+        -DCUDA_ARCH=${CUDA_ARCH}
+        -DCMAKE_CUDA_HOST_COMPILER=${CMAKE_CXX_COMPILER})
     endif()
 
     # Add HIP architecture if HIP is enabled

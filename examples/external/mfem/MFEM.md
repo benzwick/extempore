@@ -46,17 +46,40 @@ make -j
 #### GPU Build with CUDA
 **Prerequisites**: CUDA Toolkit must be installed before building with CUDA support.
 
-For NVIDIA GPUs, you need to specify the compute capability (sm_XX):
+**Debian 13 (Trixie) / GCC 14 Users**: The Debian CUDA packages only support GCC 13. You have two options:
+
+1. **Install GCC 13 and use it for CUDA builds** (recommended):
+```bash
+sudo apt install gcc-13 g++-13
+```
+Then configure with:
+```bash
+mkdir build && cd build
+CC=gcc-13 CXX=g++-13 cmake -DEXTERNAL_SHLIBS_SIMULATION=ON \
+      -DMFEM_USE_MPI=YES \
+      -DMFEM_USE_CUDA=YES \
+      -DCUDA_ARCH=sm_89 \
+      ..
+make -j
+```
+
+2. **Install CUDA from NVIDIA** (latest version, supports newer GCC):
+   - Download from https://developer.nvidia.com/cuda-downloads
+   - Select Linux → x86_64 → Debian → 12 (works on Trixie) → deb (network)
+   - Follow installation instructions
+   - Then configure as normal (see below)
+
+**GPU Compute Capabilities** - specify the correct sm_XX for your GPU:
 
 - **RTX 500/4000 Ada Generation (sm_89)**: Compute capability 8.9
 - **RTX 3090/3080/3070 (sm_86)**: Compute capability 8.6
 - **RTX 2080/2070 (sm_75)**: Compute capability 7.5
 - **V100 (sm_70)**: Compute capability 7.0
 
-Example for RTX 500 Ada Generation:
+Example for RTX 500 Ada Generation with GCC 13:
 ```bash
 mkdir build && cd build
-cmake -DEXTERNAL_SHLIBS_SIMULATION=ON \
+CC=gcc-13 CXX=g++-13 cmake -DEXTERNAL_SHLIBS_SIMULATION=ON \
       -DMFEM_USE_MPI=YES \
       -DMFEM_USE_CUDA=YES \
       -DCUDA_ARCH=sm_89 \

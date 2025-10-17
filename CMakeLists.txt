@@ -773,11 +773,12 @@ if(UNIX)
         GIT_TAG b60352fbe9675d374b00828055e55be4584c7995
         GIT_SHALLOW TRUE
         UPDATE_DISCONNECTED TRUE
-        CONFIGURE_COMMAND tar -xzf <SOURCE_DIR>/metis-5.1.0.tar.gz --strip=1 -C <BINARY_DIR>
-        BUILD_COMMAND make -C <BINARY_DIR> config shared=1 cc=${CMAKE_C_COMPILER} prefix=${EXT_DEPS_INSTALL_DIR}
-              COMMAND make -C <BINARY_DIR>
+        CONFIGURE_COMMAND tar -xzf <SOURCE_DIR>/metis-4.0.3.tar.gz --strip=1 -C <BINARY_DIR>
+        BUILD_COMMAND make -C <BINARY_DIR> COPTIONS=-Wno-incompatible-pointer-types
         BUILD_IN_SOURCE TRUE
-        INSTALL_COMMAND make -C <BINARY_DIR> install)
+        INSTALL_COMMAND ${CMAKE_COMMAND} -E make_directory ${EXT_DEPS_INSTALL_DIR}/lib ${EXT_DEPS_INSTALL_DIR}/include
+                COMMAND ${CMAKE_COMMAND} -E copy <BINARY_DIR>/libmetis.a ${EXT_DEPS_INSTALL_DIR}/lib/
+                COMMAND ${CMAKE_COMMAND} -E copy <BINARY_DIR>/Lib/defs.h <BINARY_DIR>/Lib/macros.h <BINARY_DIR>/Lib/metis.h <BINARY_DIR>/Lib/proto.h <BINARY_DIR>/Lib/rename.h <BINARY_DIR>/Lib/struct.h ${EXT_DEPS_INSTALL_DIR}/include/)
       set_target_properties(metis PROPERTIES FOLDER EXTERNAL_SHLIBS)
     endif()
 
@@ -798,8 +799,7 @@ if(UNIX)
     if(MFEM_USE_MPI)
       list(APPEND MFEM_CMAKE_ARGS
         -DHYPRE_DIR=${EXT_DEPS_INSTALL_DIR}
-        -DMETIS_DIR=${EXT_DEPS_INSTALL_DIR}
-        -DMFEM_USE_METIS_5=YES)
+        -DMETIS_DIR=${EXT_DEPS_INSTALL_DIR})
     endif()
 
     # Add CUDA architecture if CUDA is enabled

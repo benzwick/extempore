@@ -818,17 +818,23 @@ if(UNIX)
         -DCMAKE_CXX_COMPILER=hipcc)
     endif()
 
-    # Copy our C API wrapper files into MFEM source before building
-    # The patch command copies the C API files and modifies MFEM's CMakeLists.txt to include them
+    # Build MFEM library
     ExternalProject_Add(mfem
       PREFIX mfem
       URL https://github.com/mfem/mfem/archive/v4.8.tar.gz
-      PATCH_COMMAND ${CMAKE_COMMAND}
-        -DMFEM_SOURCE_DIR=<SOURCE_DIR>
-        -DMFEM_CAPI_SOURCE_DIR=${CMAKE_SOURCE_DIR}/libs/external
-        -P ${CMAKE_SOURCE_DIR}/extras/cmake/patch_mfem_for_c_api.cmake
       CMAKE_ARGS ${MFEM_CMAKE_ARGS})
     set_target_properties(mfem PROPERTIES FOLDER EXTERNAL_SHLIBS)
+
+    # Build C API wrapper as separate library (similar to PyMFEM approach)
+    ExternalProject_Add(mfem_c_api
+      PREFIX mfem_c_api
+      SOURCE_DIR ${CMAKE_SOURCE_DIR}/libs/external/mfem_c_api
+      CMAKE_ARGS
+        -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+        -DCMAKE_PREFIX_PATH=${EXT_DEPS_INSTALL_DIR}
+        -DCMAKE_INSTALL_PREFIX=${EXT_DEPS_INSTALL_DIR}
+      DEPENDS mfem)
+    set_target_properties(mfem_c_api PROPERTIES FOLDER EXTERNAL_SHLIBS)
 
     # MFEM depends on hypre and metis if MPI is enabled
     if(MFEM_USE_MPI)
@@ -865,17 +871,19 @@ if(UNIX)
     if(MFEM_USE_MPI)
       add_custom_target(external_shlibs_simulation
         COMMENT "moving shared libs into ${EXT_PLATFORM_SHLIBS_DIR}"
-        DEPENDS LLVM hypre mfem glvis
+        DEPENDS LLVM hypre mfem mfem_c_api glvis
         COMMAND ${CMAKE_COMMAND} -E make_directory ${EXT_PLATFORM_SHLIBS_DIR}
         COMMAND ${CMAKE_COMMAND} -E copy libHYPRE${CMAKE_SHARED_LIBRARY_SUFFIX} ${EXT_PLATFORM_SHLIBS_DIR}
         COMMAND ${CMAKE_COMMAND} -E copy libmfem${CMAKE_SHARED_LIBRARY_SUFFIX} ${EXT_PLATFORM_SHLIBS_DIR}
+        COMMAND ${CMAKE_COMMAND} -E copy libmfem_c_api${CMAKE_SHARED_LIBRARY_SUFFIX} ${EXT_PLATFORM_SHLIBS_DIR}
         WORKING_DIRECTORY ${EXT_DEPS_INSTALL_DIR}/lib)
     else()
       add_custom_target(external_shlibs_simulation
         COMMENT "moving shared libs into ${EXT_PLATFORM_SHLIBS_DIR}"
-        DEPENDS LLVM mfem glvis
+        DEPENDS LLVM mfem mfem_c_api glvis
         COMMAND ${CMAKE_COMMAND} -E make_directory ${EXT_PLATFORM_SHLIBS_DIR}
         COMMAND ${CMAKE_COMMAND} -E copy libmfem${CMAKE_SHARED_LIBRARY_SUFFIX} ${EXT_PLATFORM_SHLIBS_DIR}
+        COMMAND ${CMAKE_COMMAND} -E copy libmfem_c_api${CMAKE_SHARED_LIBRARY_SUFFIX} ${EXT_PLATFORM_SHLIBS_DIR}
         WORKING_DIRECTORY ${EXT_DEPS_INSTALL_DIR}/lib)
     endif()
     set_target_properties(external_shlibs_simulation PROPERTIES FOLDER EXTERNAL_SHLIBS)

@@ -26,11 +26,11 @@
 
 (impc:aot:insert-header "xtmfem")
 
-;; bind dynamic library
+;; bind dynamic library (C API wrapper)
 (bind-dylib libmfem
-  (cond ((string=? (sys:platform) "OSX") "libmfem.dylib")
-        ((string=? (sys:platform) "Linux") "libmfem.so")
-        ((string=? (sys:platform) "Windows") "mfem.dll")))
+  (cond ((string=? (sys:platform) "OSX") "libmfem_c_api.dylib")
+        ((string=? (sys:platform) "Linux") "libmfem_c_api.so")
+        ((string=? (sys:platform) "Windows") "mfem_c_api.dll")))
 
 ;; LLVM optimization
 (impc:aot:import-ll "xtmfem")

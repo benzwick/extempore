@@ -56,7 +56,9 @@
 (bind-type mfem_HypreParVector <i8*>)
 (bind-type mfem_Coefficient <i8*>)
 (bind-type mfem_VectorCoefficient <i8*>)
+(bind-type mfem_VectorArrayCoefficient <i8*>)
 (bind-type mfem_MatrixCoefficient <i8*>)
+(bind-type mfem_IntArray <i8*>)
 (bind-type mfem_IntegrationRules <i8*>)
 (bind-type mfem_ODESolver <i8*>)
 (bind-type mfem_TimeDependentOperator <i8*>)
@@ -99,6 +101,8 @@
 (bind-lib libmfem mfem_mesh_get_ne [i32,mfem_Mesh]*)  ;; number of elements
 (bind-lib libmfem mfem_mesh_get_nv [i32,mfem_Mesh]*)  ;; number of vertices
 (bind-lib libmfem mfem_mesh_get_dimension [i32,mfem_Mesh]*)
+(bind-lib libmfem mfem_mesh_get_bdr_attributes_max [i32,mfem_Mesh]*)
+(bind-lib libmfem mfem_mesh_get_attributes_max [i32,mfem_Mesh]*)
 (bind-lib libmfem mfem_mesh_destroy [void,mfem_Mesh]*)
 
 ;; Parallel mesh operations
@@ -112,11 +116,15 @@
 
 ;; Create FE space
 (bind-lib libmfem mfem_fespace_create [mfem_FiniteElementSpace,mfem_Mesh,i32,i32]*)
+(bind-lib libmfem mfem_fespace_create_vdim [mfem_FiniteElementSpace,mfem_Mesh,i32,i32,i32]*)
 (bind-lib libmfem mfem_parfespace_create [mfem_ParFiniteElementSpace,mfem_ParMesh,i32,i32]*)
 
 ;; FE space operations
 (bind-lib libmfem mfem_fespace_get_ndof [i32,mfem_FiniteElementSpace]*)
 (bind-lib libmfem mfem_fespace_get_order [i32,mfem_FiniteElementSpace]*)
+(bind-lib libmfem mfem_fespace_get_truevsize [i32,mfem_FiniteElementSpace]*)
+(bind-lib libmfem mfem_fespace_get_boundary_truedofs [void,mfem_FiniteElementSpace,mfem_IntArray]*)
+(bind-lib libmfem mfem_fespace_get_essential_truedofs [void,mfem_FiniteElementSpace,mfem_IntArray,mfem_IntArray]*)
 (bind-lib libmfem mfem_fespace_destroy [void,mfem_FiniteElementSpace]*)
 (bind-lib libmfem mfem_parfespace_destroy [void,mfem_ParFiniteElementSpace]*)
 
@@ -144,10 +152,16 @@
 ;; Coefficient function type
 (bind-alias mfem_coeff_function [double,double*,double]*)
 
-;; Create coefficients
+;; Scalar coefficients
 (bind-lib libmfem mfem_constant_coefficient_create [mfem_Coefficient,double]*)
 (bind-lib libmfem mfem_function_coefficient_create [mfem_Coefficient,mfem_coeff_function]*)
+(bind-lib libmfem mfem_pwconst_coefficient_create [mfem_Coefficient,mfem_Vector]*)
 (bind-lib libmfem mfem_coefficient_destroy [void,mfem_Coefficient]*)
+
+;; Vector coefficients
+(bind-lib libmfem mfem_vector_array_coefficient_create [mfem_VectorArrayCoefficient,i32]*)
+(bind-lib libmfem mfem_vector_array_coefficient_set [void,mfem_VectorArrayCoefficient,i32,mfem_Coefficient]*)
+(bind-lib libmfem mfem_vector_array_coefficient_destroy [void,mfem_VectorArrayCoefficient]*)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Integrators
@@ -159,10 +173,13 @@
 ;; Linear form integrators
 (bind-lib libmfem mfem_domain_lf_integrator_create [mfem_LinearFormIntegrator,mfem_Coefficient]*)
 (bind-lib libmfem mfem_linearform_add_domain_integrator [void,mfem_LinearForm,mfem_LinearFormIntegrator]*)
+(bind-lib libmfem mfem_vector_boundary_lf_integrator_create [mfem_LinearFormIntegrator,mfem_VectorCoefficient]*)
+(bind-lib libmfem mfem_linearform_add_boundary_integrator [void,mfem_LinearForm,mfem_LinearFormIntegrator]*)
 
 ;; Bilinear form integrators
 (bind-lib libmfem mfem_diffusion_integrator_create [mfem_BilinearFormIntegrator,mfem_Coefficient]*)
 (bind-lib libmfem mfem_mass_integrator_create [mfem_BilinearFormIntegrator,mfem_Coefficient]*)
+(bind-lib libmfem mfem_elasticity_integrator_create [mfem_BilinearFormIntegrator,mfem_Coefficient,mfem_Coefficient]*)
 (bind-lib libmfem mfem_bilinearform_add_domain_integrator [void,mfem_BilinearForm,mfem_BilinearFormIntegrator]*)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -178,7 +195,21 @@
 (bind-lib libmfem mfem_bilinearform_create [mfem_BilinearForm,mfem_FiniteElementSpace]*)
 (bind-lib libmfem mfem_bilinearform_assemble [void,mfem_BilinearForm]*)
 (bind-lib libmfem mfem_bilinearform_get_matrix [mfem_SparseMatrix,mfem_BilinearForm]*)
+(bind-lib libmfem mfem_bilinearform_form_linear_system [void,mfem_BilinearForm,mfem_IntArray,mfem_GridFunction,mfem_LinearForm,mfem_SparseMatrix*,mfem_Vector*,mfem_Vector*]*)
+(bind-lib libmfem mfem_bilinearform_recover_solution [void,mfem_BilinearForm,mfem_Vector,mfem_LinearForm,mfem_GridFunction]*)
 (bind-lib libmfem mfem_bilinearform_destroy [void,mfem_BilinearForm]*)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; IntArray Operations
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(bind-lib libmfem mfem_intarray_create [mfem_IntArray]*)
+(bind-lib libmfem mfem_intarray_create_with_size [mfem_IntArray,i32]*)
+(bind-lib libmfem mfem_intarray_destroy [void,mfem_IntArray]*)
+(bind-lib libmfem mfem_intarray_size [i32,mfem_IntArray]*)
+(bind-lib libmfem mfem_intarray_set [void,mfem_IntArray,i32,i32]*)
+(bind-lib libmfem mfem_intarray_get [i32,mfem_IntArray,i32]*)
+(bind-lib libmfem mfem_intarray_set_all [void,mfem_IntArray,i32]*)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Vector Operations

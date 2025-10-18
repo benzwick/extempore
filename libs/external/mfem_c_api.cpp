@@ -116,7 +116,12 @@ void mfem_mesh_destroy(mfem_Mesh mesh) {
 
 mfem_ParMesh mfem_parmesh_load_file(MPI_Comm comm, const char* filename) {
     MFEM_C_TRY
-        mfem::ParMesh* mesh = new mfem::ParMesh(comm, filename);
+        std::ifstream imesh(filename);
+        if (!imesh) {
+            g_last_error = std::string("Cannot open parallel mesh file: ") + filename;
+            return nullptr;
+        }
+        mfem::ParMesh* mesh = new mfem::ParMesh(comm, imesh);
         return (mfem_ParMesh)mesh;
     MFEM_C_CATCH
     return nullptr;
@@ -400,10 +405,100 @@ mfem_Coefficient mfem_constant_coefficient_create(double value) {
     return nullptr;
 }
 
+/* Wrapper class for function coefficients that bridges C function pointers to C++ */
+class CFunctionCoefficient : public mfem::Coefficient {
+private:
+    mfem_coeff_function func;
+public:
+    CFunctionCoefficient(mfem_coeff_function f) : func(f) {}
+
+    virtual double Eval(mfem::ElementTransformation &T, const mfem::IntegrationPoint &ip) {
+        double x[3] = {0.0, 0.0, 0.0};
+        mfem::Vector transip;
+        T.Transform(ip, transip);
+        for (int i = 0; i < transip.Size() && i < 3; i++) {
+            x[i] = transip[i];
+        }
+        /* Time parameter is always 0.0 for time-independent problems */
+        double t = 0.0;
+        return func(x, t);
+    }
+};
+
+mfem_Coefficient mfem_function_coefficient_create(mfem_coeff_function func) {
+    MFEM_C_TRY
+        if (!func) {
+            g_last_error = "Function pointer cannot be NULL";
+            return nullptr;
+        }
+        CFunctionCoefficient* coeff = new CFunctionCoefficient(func);
+        return (mfem_Coefficient)coeff;
+    MFEM_C_CATCH
+    return nullptr;
+}
+
 void mfem_coefficient_destroy(mfem_Coefficient coeff) {
     if (coeff) {
         delete (mfem::Coefficient*)coeff;
     }
+}
+
+/*============================================================================
+ * Integrator Functions
+ *===========================================================================*/
+
+mfem_LinearFormIntegrator mfem_domain_lf_integrator_create(mfem_Coefficient coeff) {
+    MFEM_C_TRY
+        if (!coeff) return nullptr;
+        mfem::DomainLFIntegrator* integ = new mfem::DomainLFIntegrator(*((mfem::Coefficient*)coeff));
+        return (mfem_LinearFormIntegrator)integ;
+    MFEM_C_CATCH
+    return nullptr;
+}
+
+void mfem_linearform_add_domain_integrator(mfem_LinearForm lf, mfem_LinearFormIntegrator integ) {
+    MFEM_C_TRY
+        if (lf && integ) {
+            ((mfem::LinearForm*)lf)->AddDomainIntegrator((mfem::LinearFormIntegrator*)integ);
+            /* Note: LinearForm takes ownership of the integrator */
+        }
+    MFEM_C_CATCH
+}
+
+mfem_BilinearFormIntegrator mfem_diffusion_integrator_create(mfem_Coefficient coeff) {
+    MFEM_C_TRY
+        if (!coeff) {
+            /* If no coefficient provided, create with default (coefficient = 1.0) */
+            mfem::DiffusionIntegrator* integ = new mfem::DiffusionIntegrator();
+            return (mfem_BilinearFormIntegrator)integ;
+        } else {
+            mfem::DiffusionIntegrator* integ = new mfem::DiffusionIntegrator(*((mfem::Coefficient*)coeff));
+            return (mfem_BilinearFormIntegrator)integ;
+        }
+    MFEM_C_CATCH
+    return nullptr;
+}
+
+mfem_BilinearFormIntegrator mfem_mass_integrator_create(mfem_Coefficient coeff) {
+    MFEM_C_TRY
+        if (!coeff) {
+            mfem::MassIntegrator* integ = new mfem::MassIntegrator();
+            return (mfem_BilinearFormIntegrator)integ;
+        } else {
+            mfem::MassIntegrator* integ = new mfem::MassIntegrator(*((mfem::Coefficient*)coeff));
+            return (mfem_BilinearFormIntegrator)integ;
+        }
+    MFEM_C_CATCH
+    return nullptr;
+}
+
+void mfem_bilinearform_add_domain_integrator(mfem_BilinearForm bf, mfem_BilinearFormIntegrator integ) {
+    MFEM_C_TRY
+        if (bf && integ) {
+            ((mfem::BilinearForm*)bf)->AddDomainIntegrator((mfem::BilinearFormIntegrator*)integ);
+            /* Note: BilinearForm takes ownership of the integrator */
+        }
+    MFEM_C_CATCH
 }
 
 /*============================================================================
@@ -496,6 +591,211 @@ void mfem_solver_destroy(mfem_Solver solver) {
     if (solver) {
         delete (mfem::Solver*)solver;
     }
+}
+
+/*============================================================================
+ * Additional Iterative Solvers
+ *===========================================================================*/
+
+mfem_Solver mfem_gmres_solver_create() {
+    MFEM_C_TRY
+        mfem::GMRESSolver* solver = new mfem::GMRESSolver();
+        solver->SetPrintLevel(0);  /* Suppress output by default */
+        return (mfem_Solver)solver;
+    MFEM_C_CATCH
+    return nullptr;
+}
+
+void mfem_gmres_solver_set_operator(mfem_Solver solver, mfem_SparseMatrix mat) {
+    MFEM_C_TRY
+        if (solver && mat) {
+            ((mfem::GMRESSolver*)solver)->SetOperator(*((mfem::SparseMatrix*)mat));
+        }
+    MFEM_C_CATCH
+}
+
+void mfem_gmres_solver_set_tolerance(mfem_Solver solver, double tol) {
+    MFEM_C_TRY
+        if (solver) {
+            ((mfem::GMRESSolver*)solver)->SetRelTol(tol);
+        }
+    MFEM_C_CATCH
+}
+
+void mfem_gmres_solver_set_max_iter(mfem_Solver solver, int32_t max_it) {
+    MFEM_C_TRY
+        if (solver) {
+            ((mfem::GMRESSolver*)solver)->SetMaxIter(max_it);
+        }
+    MFEM_C_CATCH
+}
+
+void mfem_gmres_solver_mult(mfem_Solver solver, mfem_Vector b, mfem_Vector x) {
+    MFEM_C_TRY
+        if (solver && b && x) {
+            ((mfem::GMRESSolver*)solver)->Mult(*((mfem::Vector*)b), *((mfem::Vector*)x));
+        }
+    MFEM_C_CATCH
+}
+
+mfem_Solver mfem_bicgstab_solver_create() {
+    MFEM_C_TRY
+        mfem::BiCGSTABSolver* solver = new mfem::BiCGSTABSolver();
+        solver->SetPrintLevel(0);  /* Suppress output by default */
+        return (mfem_Solver)solver;
+    MFEM_C_CATCH
+    return nullptr;
+}
+
+void mfem_bicgstab_solver_set_operator(mfem_Solver solver, mfem_SparseMatrix mat) {
+    MFEM_C_TRY
+        if (solver && mat) {
+            ((mfem::BiCGSTABSolver*)solver)->SetOperator(*((mfem::SparseMatrix*)mat));
+        }
+    MFEM_C_CATCH
+}
+
+void mfem_bicgstab_solver_set_tolerance(mfem_Solver solver, double tol) {
+    MFEM_C_TRY
+        if (solver) {
+            ((mfem::BiCGSTABSolver*)solver)->SetRelTol(tol);
+        }
+    MFEM_C_CATCH
+}
+
+void mfem_bicgstab_solver_set_max_iter(mfem_Solver solver, int32_t max_it) {
+    MFEM_C_TRY
+        if (solver) {
+            ((mfem::BiCGSTABSolver*)solver)->SetMaxIter(max_it);
+        }
+    MFEM_C_CATCH
+}
+
+void mfem_bicgstab_solver_mult(mfem_Solver solver, mfem_Vector b, mfem_Vector x) {
+    MFEM_C_TRY
+        if (solver && b && x) {
+            ((mfem::BiCGSTABSolver*)solver)->Mult(*((mfem::Vector*)b), *((mfem::Vector*)x));
+        }
+    MFEM_C_CATCH
+}
+
+#ifdef MFEM_USE_MPI
+mfem_Solver mfem_hypre_boomeramg_create() {
+    MFEM_C_TRY
+        mfem::HypreBoomerAMG* solver = new mfem::HypreBoomerAMG();
+        solver->SetPrintLevel(0);  /* Suppress output by default */
+        return (mfem_Solver)solver;
+    MFEM_C_CATCH
+    return nullptr;
+}
+
+void mfem_hypre_boomeramg_set_operator(mfem_Solver solver, mfem_HypreParMatrix mat) {
+    MFEM_C_TRY
+        if (solver && mat) {
+            ((mfem::HypreBoomerAMG*)solver)->SetOperator(*((mfem::HypreParMatrix*)mat));
+        }
+    MFEM_C_CATCH
+}
+
+void mfem_hypre_boomeramg_set_tolerance(mfem_Solver solver, double tol) {
+    MFEM_C_TRY
+        if (solver) {
+            ((mfem::HypreBoomerAMG*)solver)->SetTol(tol);
+        }
+    MFEM_C_CATCH
+}
+
+void mfem_hypre_boomeramg_set_max_iter(mfem_Solver solver, int32_t max_it) {
+    MFEM_C_TRY
+        if (solver) {
+            ((mfem::HypreBoomerAMG*)solver)->SetMaxIter(max_it);
+        }
+    MFEM_C_CATCH
+}
+
+void mfem_hypre_boomeramg_mult(mfem_Solver solver, mfem_Vector b, mfem_Vector x) {
+    MFEM_C_TRY
+        if (solver && b && x) {
+            ((mfem::HypreBoomerAMG*)solver)->Mult(*((mfem::Vector*)b), *((mfem::Vector*)x));
+        }
+    MFEM_C_CATCH
+}
+#endif
+
+/*============================================================================
+ * ODE Solver Implementations
+ *===========================================================================*/
+
+mfem_ODESolver mfem_forward_euler_solver_create() {
+    MFEM_C_TRY
+        mfem::ForwardEulerSolver* solver = new mfem::ForwardEulerSolver();
+        return (mfem_ODESolver)solver;
+    MFEM_C_CATCH
+    return nullptr;
+}
+
+mfem_ODESolver mfem_rk2_solver_create() {
+    MFEM_C_TRY
+        mfem::RK2Solver* solver = new mfem::RK2Solver(0.5);  /* midpoint method */
+        return (mfem_ODESolver)solver;
+    MFEM_C_CATCH
+    return nullptr;
+}
+
+mfem_ODESolver mfem_rk4_solver_create() {
+    MFEM_C_TRY
+        mfem::RK4Solver* solver = new mfem::RK4Solver();
+        return (mfem_ODESolver)solver;
+    MFEM_C_CATCH
+    return nullptr;
+}
+
+mfem_ODESolver mfem_backward_euler_solver_create() {
+    MFEM_C_TRY
+        mfem::BackwardEulerSolver* solver = new mfem::BackwardEulerSolver();
+        return (mfem_ODESolver)solver;
+    MFEM_C_CATCH
+    return nullptr;
+}
+
+mfem_ODESolver mfem_sdirk23_solver_create() {
+    MFEM_C_TRY
+        mfem::SDIRK23Solver* solver = new mfem::SDIRK23Solver();
+        return (mfem_ODESolver)solver;
+    MFEM_C_CATCH
+    return nullptr;
+}
+
+mfem_ODESolver mfem_sdirk34_solver_create() {
+    MFEM_C_TRY
+        mfem::SDIRK34Solver* solver = new mfem::SDIRK34Solver();
+        return (mfem_ODESolver)solver;
+    MFEM_C_CATCH
+    return nullptr;
+}
+
+void mfem_odesolver_init(mfem_ODESolver solver, mfem_TimeDependentOperator op) {
+    MFEM_C_TRY
+        if (solver && op) {
+            ((mfem::ODESolver*)solver)->Init(*((mfem::TimeDependentOperator*)op));
+        }
+    MFEM_C_CATCH
+}
+
+void mfem_odesolver_step(mfem_ODESolver solver, mfem_Vector x, double* t, double* dt) {
+    MFEM_C_TRY
+        if (solver && x && t && dt) {
+            ((mfem::ODESolver*)solver)->Step(*((mfem::Vector*)x), *t, *dt);
+        }
+    MFEM_C_CATCH
+}
+
+void mfem_odesolver_destroy(mfem_ODESolver solver) {
+    MFEM_C_TRY
+        if (solver) {
+            delete (mfem::ODESolver*)solver;
+        }
+    MFEM_C_CATCH
 }
 
 /*============================================================================

@@ -40,29 +40,29 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Opaque handle types for core MFEM classes
-(bind-type mfem_Mesh i8*)
-(bind-type mfem_ParMesh i8*)
-(bind-type mfem_FiniteElementSpace i8*)
-(bind-type mfem_ParFiniteElementSpace i8*)
-(bind-type mfem_GridFunction i8*)
-(bind-type mfem_ParGridFunction i8*)
-(bind-type mfem_LinearForm i8*)
-(bind-type mfem_ParLinearForm i8*)
-(bind-type mfem_BilinearForm i8*)
-(bind-type mfem_ParBilinearForm i8*)
-(bind-type mfem_SparseMatrix i8*)
-(bind-type mfem_HypreParMatrix i8*)
-(bind-type mfem_Vector i8*)
-(bind-type mfem_HypreParVector i8*)
-(bind-type mfem_Coefficient i8*)
-(bind-type mfem_VectorCoefficient i8*)
-(bind-type mfem_MatrixCoefficient i8*)
-(bind-type mfem_IntegrationRules i8*)
-(bind-type mfem_ODESolver i8*)
-(bind-type mfem_TimeDependentOperator i8*)
+(bind-type mfem_Mesh <i8*>)
+(bind-type mfem_ParMesh <i8*>)
+(bind-type mfem_FiniteElementSpace <i8*>)
+(bind-type mfem_ParFiniteElementSpace <i8*>)
+(bind-type mfem_GridFunction <i8*>)
+(bind-type mfem_ParGridFunction <i8*>)
+(bind-type mfem_LinearForm <i8*>)
+(bind-type mfem_ParLinearForm <i8*>)
+(bind-type mfem_BilinearForm <i8*>)
+(bind-type mfem_ParBilinearForm <i8*>)
+(bind-type mfem_SparseMatrix <i8*>)
+(bind-type mfem_HypreParMatrix <i8*>)
+(bind-type mfem_Vector <i8*>)
+(bind-type mfem_HypreParVector <i8*>)
+(bind-type mfem_Coefficient <i8*>)
+(bind-type mfem_VectorCoefficient <i8*>)
+(bind-type mfem_MatrixCoefficient <i8*>)
+(bind-type mfem_IntegrationRules <i8*>)
+(bind-type mfem_ODESolver <i8*>)
+(bind-type mfem_TimeDependentOperator <i8*>)
 
 ;; MPI types
-(bind-type MPI_Comm i32)
+(bind-type MPI_Comm <i32>)
 (bind-val MPI_COMM_WORLD MPI_Comm)
 
 ;; Refinement types
@@ -129,12 +129,11 @@
 (bind-lib libmfem mfem_pargridfunc_create [mfem_ParGridFunction,mfem_ParFiniteElementSpace]*)
 
 ;; Grid function operations
-(bind-lib libmfem mfem_gridfunc_set_const [void,mfem_GridFunction,double]*)
-(bind-lib libmfem mfem_gridfunc_project_coeff [void,mfem_GridFunction,mfem_Coefficient]*)
+(bind-lib libmfem mfem_gridfunc_set_constant [void,mfem_GridFunction,double]*)
+(bind-lib libmfem mfem_gridfunc_project_coefficient [void,mfem_GridFunction,mfem_Coefficient]*)
+(bind-lib libmfem mfem_gridfunc_get_data [double*,mfem_GridFunction]*)
+(bind-lib libmfem mfem_gridfunc_size [i32,mfem_GridFunction]*)
 (bind-lib libmfem mfem_gridfunc_save [void,mfem_GridFunction,i8*]*)
-(bind-lib libmfem mfem_gridfunc_load [void,mfem_GridFunction,i8*]*)
-(bind-lib libmfem mfem_gridfunc_get_value [double,mfem_GridFunction,i32,double*]*)
-(bind-lib libmfem mfem_gridfunc_set_value [void,mfem_GridFunction,i32,double]*)
 (bind-lib libmfem mfem_gridfunc_destroy [void,mfem_GridFunction]*)
 (bind-lib libmfem mfem_pargridfunc_destroy [void,mfem_ParGridFunction]*)
 
@@ -142,15 +141,29 @@
 ;; Coefficient Functions
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; Create coefficients
-(bind-lib libmfem mfem_const_coeff_create [mfem_Coefficient,double]*)
-(bind-lib libmfem mfem_func_coeff_create [mfem_Coefficient,[double,double*,double]*]*)
-(bind-lib libmfem mfem_gridfunc_coeff_create [mfem_Coefficient,mfem_GridFunction]*)
-(bind-lib libmfem mfem_coeff_destroy [void,mfem_Coefficient]*)
+;; Coefficient function type
+(bind-alias mfem_coeff_function [double,double*,double]*)
 
-;; Vector coefficients
-(bind-lib libmfem mfem_const_vec_coeff_create [mfem_VectorCoefficient,i32,double*]*)
-(bind-lib libmfem mfem_vec_coeff_destroy [void,mfem_VectorCoefficient]*)
+;; Create coefficients
+(bind-lib libmfem mfem_constant_coefficient_create [mfem_Coefficient,double]*)
+(bind-lib libmfem mfem_function_coefficient_create [mfem_Coefficient,mfem_coeff_function]*)
+(bind-lib libmfem mfem_coefficient_destroy [void,mfem_Coefficient]*)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Integrators
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(bind-type mfem_LinearFormIntegrator <i8*>)
+(bind-type mfem_BilinearFormIntegrator <i8*>)
+
+;; Linear form integrators
+(bind-lib libmfem mfem_domain_lf_integrator_create [mfem_LinearFormIntegrator,mfem_Coefficient]*)
+(bind-lib libmfem mfem_linearform_add_domain_integrator [void,mfem_LinearForm,mfem_LinearFormIntegrator]*)
+
+;; Bilinear form integrators
+(bind-lib libmfem mfem_diffusion_integrator_create [mfem_BilinearFormIntegrator,mfem_Coefficient]*)
+(bind-lib libmfem mfem_mass_integrator_create [mfem_BilinearFormIntegrator,mfem_Coefficient]*)
+(bind-lib libmfem mfem_bilinearform_add_domain_integrator [void,mfem_BilinearForm,mfem_BilinearFormIntegrator]*)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Forms and Operators
@@ -158,48 +171,86 @@
 
 ;; Linear forms
 (bind-lib libmfem mfem_linearform_create [mfem_LinearForm,mfem_FiniteElementSpace]*)
-(bind-lib libmfem mfem_linearform_add_domain_integrator [void,mfem_LinearForm,mfem_Coefficient]*)
 (bind-lib libmfem mfem_linearform_assemble [void,mfem_LinearForm]*)
 (bind-lib libmfem mfem_linearform_destroy [void,mfem_LinearForm]*)
 
 ;; Bilinear forms
 (bind-lib libmfem mfem_bilinearform_create [mfem_BilinearForm,mfem_FiniteElementSpace]*)
-(bind-lib libmfem mfem_bilinearform_add_domain_integrator [void,mfem_BilinearForm,mfem_Coefficient]*)
 (bind-lib libmfem mfem_bilinearform_assemble [void,mfem_BilinearForm]*)
-(bind-lib libmfem mfem_bilinearform_finalize [void,mfem_BilinearForm,i32]*)
 (bind-lib libmfem mfem_bilinearform_get_matrix [mfem_SparseMatrix,mfem_BilinearForm]*)
 (bind-lib libmfem mfem_bilinearform_destroy [void,mfem_BilinearForm]*)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Vector Operations
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(bind-lib libmfem mfem_vector_create [mfem_Vector,i32]*)
+(bind-lib libmfem mfem_vector_set [void,mfem_Vector,i32,double]*)
+(bind-lib libmfem mfem_vector_get [double,mfem_Vector,i32]*)
+(bind-lib libmfem mfem_vector_size [i32,mfem_Vector]*)
+(bind-lib libmfem mfem_vector_get_data [double*,mfem_Vector]*)
+(bind-lib libmfem mfem_vector_destroy [void,mfem_Vector]*)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Linear Solvers
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; Direct solvers
-(bind-lib libmfem mfem_umfpack_solve [void,mfem_SparseMatrix,mfem_Vector,mfem_Vector]*)
+;; CG Solver
+(bind-type mfem_Solver <i8*>)
+(bind-lib libmfem mfem_cg_solver_create [mfem_Solver]*)
+(bind-lib libmfem mfem_cg_solver_set_operator [void,mfem_Solver,mfem_SparseMatrix]*)
+(bind-lib libmfem mfem_cg_solver_set_tolerance [void,mfem_Solver,double]*)
+(bind-lib libmfem mfem_cg_solver_set_max_iter [void,mfem_Solver,i32]*)
+(bind-lib libmfem mfem_cg_solver_mult [void,mfem_Solver,mfem_Vector,mfem_Vector]*)
 
-;; Iterative solvers
-(bind-lib libmfem mfem_cg_solve [i32,mfem_SparseMatrix,mfem_Vector,mfem_Vector,double,i32]*)
-(bind-lib libmfem mfem_gmres_solve [i32,mfem_SparseMatrix,mfem_Vector,mfem_Vector,double,i32]*)
-(bind-lib libmfem mfem_bicgstab_solve [i32,mfem_SparseMatrix,mfem_Vector,mfem_Vector,double,i32]*)
+;; GMRES Solver
+(bind-lib libmfem mfem_gmres_solver_create [mfem_Solver]*)
+(bind-lib libmfem mfem_gmres_solver_set_operator [void,mfem_Solver,mfem_SparseMatrix]*)
+(bind-lib libmfem mfem_gmres_solver_set_tolerance [void,mfem_Solver,double]*)
+(bind-lib libmfem mfem_gmres_solver_set_max_iter [void,mfem_Solver,i32]*)
+(bind-lib libmfem mfem_gmres_solver_mult [void,mfem_Solver,mfem_Vector,mfem_Vector]*)
 
-;; AMG (Algebraic Multigrid)
-(bind-lib libmfem mfem_amg_solve [i32,mfem_HypreParMatrix,mfem_HypreParVector,mfem_HypreParVector,double,i32]*)
+;; BiCGSTAB Solver
+(bind-lib libmfem mfem_bicgstab_solver_create [mfem_Solver]*)
+(bind-lib libmfem mfem_bicgstab_solver_set_operator [void,mfem_Solver,mfem_SparseMatrix]*)
+(bind-lib libmfem mfem_bicgstab_solver_set_tolerance [void,mfem_Solver,double]*)
+(bind-lib libmfem mfem_bicgstab_solver_set_max_iter [void,mfem_Solver,i32]*)
+(bind-lib libmfem mfem_bicgstab_solver_mult [void,mfem_Solver,mfem_Vector,mfem_Vector]*)
+
+;; HYPRE BoomerAMG (parallel only, MPI required)
+;; (bind-lib libmfem mfem_hypre_boomeramg_create [mfem_Solver]*)
+;; (bind-lib libmfem mfem_hypre_boomeramg_set_operator [void,mfem_Solver,mfem_HypreParMatrix]*)
+;; (bind-lib libmfem mfem_hypre_boomeramg_set_tolerance [void,mfem_Solver,double]*)
+;; (bind-lib libmfem mfem_hypre_boomeramg_set_max_iter [void,mfem_Solver,i32]*)
+;; (bind-lib libmfem mfem_hypre_boomeramg_mult [void,mfem_Solver,mfem_Vector,mfem_Vector]*)
+
+(bind-lib libmfem mfem_solver_destroy [void,mfem_Solver]*)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Time Integration
+;; ODE Solvers
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; ODE solvers
-(bind-lib libmfem mfem_forward_euler_create [mfem_ODESolver]*)
-(bind-lib libmfem mfem_rk2_create [mfem_ODESolver]*)
-(bind-lib libmfem mfem_rk4_create [mfem_ODESolver]*)
-(bind-lib libmfem mfem_implicit_euler_create [mfem_ODESolver]*)
-(bind-lib libmfem mfem_sdirk23_create [mfem_ODESolver]*)
-(bind-lib libmfem mfem_sdirk34_create [mfem_ODESolver]*)
+;; Explicit ODE solvers
+(bind-lib libmfem mfem_forward_euler_solver_create [mfem_ODESolver]*)
+(bind-lib libmfem mfem_rk2_solver_create [mfem_ODESolver]*)
+(bind-lib libmfem mfem_rk4_solver_create [mfem_ODESolver]*)
 
+;; Implicit ODE solvers
+(bind-lib libmfem mfem_backward_euler_solver_create [mfem_ODESolver]*)
+(bind-lib libmfem mfem_sdirk23_solver_create [mfem_ODESolver]*)
+(bind-lib libmfem mfem_sdirk34_solver_create [mfem_ODESolver]*)
+
+;; ODE solver operations
 (bind-lib libmfem mfem_odesolver_init [void,mfem_ODESolver,mfem_TimeDependentOperator]*)
-(bind-lib libmfem mfem_odesolver_step [void,mfem_ODESolver,mfem_Vector,double,double]*)
+(bind-lib libmfem mfem_odesolver_step [void,mfem_ODESolver,mfem_Vector,double*,double*]*)
 (bind-lib libmfem mfem_odesolver_destroy [void,mfem_ODESolver]*)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Utility Functions
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(bind-lib libmfem mfem_get_version [i8*]*)
+(bind-lib libmfem mfem_get_last_error [i8*]*)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Helper Functions
@@ -228,16 +279,13 @@
 (bind-func mfem_init_gridfunc
   (lambda (fespace:mfem_FiniteElementSpace value:double)
     (let ((gf (mfem_gridfunc_create fespace)))
-      (mfem_gridfunc_set_const gf value)
+      (mfem_gridfunc_set_constant gf value)
       gf)))
-
-;; Callback function type for time-dependent coefficients
-(bind-alias mfem_coeff_func [double,double*,double]*)
 
 ;; Create a time-dependent coefficient from a callback
 (bind-func mfem_create_time_coeff
-  (lambda (func:mfem_coeff_func)
-    (mfem_func_coeff_create func)))
+  (lambda (func:mfem_coeff_function)
+    (mfem_function_coefficient_create func)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Audio-Reactive Coefficient
@@ -248,7 +296,7 @@
 (bind-val *mfem_audio_frequency* double 440.0)
 
 ;; Audio-driven coefficient function
-(bind-func mfem_audio_coeff_func:mfem_coeff_func
+(bind-func mfem_audio_coeff_func:mfem_coeff_function
   (lambda (x t)
     (let ((amp *mfem_audio_amplitude*)
           (freq *mfem_audio_frequency*)

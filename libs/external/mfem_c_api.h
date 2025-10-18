@@ -31,9 +31,6 @@ typedef void* mfem_Vector;
 typedef void* mfem_Coefficient;
 typedef void* mfem_Solver;
 
-/* MPI type (only when MPI is enabled) */
-typedef int32_t MPI_Comm;
-
 /* Element types - match mfem::Element::Type */
 #define MFEM_ELEMENT_POINT 0
 #define MFEM_ELEMENT_SEGMENT 1
@@ -153,8 +150,29 @@ void mfem_bilinearform_destroy(mfem_BilinearForm bf);
  * Coefficient Functions
  *===========================================================================*/
 
+/* Function pointer type for custom coefficient functions */
+typedef double (*mfem_coeff_function)(const double* x, double t);
+
+/* Create coefficients */
 mfem_Coefficient mfem_constant_coefficient_create(double value);
+mfem_Coefficient mfem_function_coefficient_create(mfem_coeff_function func);
 void mfem_coefficient_destroy(mfem_Coefficient coeff);
+
+/*============================================================================
+ * Integrator Functions (for Linear/Bilinear Forms)
+ *===========================================================================*/
+
+typedef void* mfem_LinearFormIntegrator;
+typedef void* mfem_BilinearFormIntegrator;
+
+/* Domain integrators for linear forms */
+mfem_LinearFormIntegrator mfem_domain_lf_integrator_create(mfem_Coefficient coeff);
+void mfem_linearform_add_domain_integrator(mfem_LinearForm lf, mfem_LinearFormIntegrator integ);
+
+/* Domain integrators for bilinear forms */
+mfem_BilinearFormIntegrator mfem_diffusion_integrator_create(mfem_Coefficient coeff);
+mfem_BilinearFormIntegrator mfem_mass_integrator_create(mfem_Coefficient coeff);
+void mfem_bilinearform_add_domain_integrator(mfem_BilinearForm bf, mfem_BilinearFormIntegrator integ);
 
 /*============================================================================
  * Vector Functions
@@ -178,6 +196,51 @@ void mfem_cg_solver_set_tolerance(mfem_Solver solver, double tol);
 void mfem_cg_solver_set_max_iter(mfem_Solver solver, int32_t max_it);
 void mfem_cg_solver_mult(mfem_Solver solver, mfem_Vector b, mfem_Vector x);
 void mfem_solver_destroy(mfem_Solver solver);
+
+/* GMRES Solver */
+mfem_Solver mfem_gmres_solver_create();
+void mfem_gmres_solver_set_operator(mfem_Solver solver, mfem_SparseMatrix mat);
+void mfem_gmres_solver_set_tolerance(mfem_Solver solver, double tol);
+void mfem_gmres_solver_set_max_iter(mfem_Solver solver, int32_t max_it);
+void mfem_gmres_solver_mult(mfem_Solver solver, mfem_Vector b, mfem_Vector x);
+
+/* BiCGSTAB Solver */
+mfem_Solver mfem_bicgstab_solver_create();
+void mfem_bicgstab_solver_set_operator(mfem_Solver solver, mfem_SparseMatrix mat);
+void mfem_bicgstab_solver_set_tolerance(mfem_Solver solver, double tol);
+void mfem_bicgstab_solver_set_max_iter(mfem_Solver solver, int32_t max_it);
+void mfem_bicgstab_solver_mult(mfem_Solver solver, mfem_Vector b, mfem_Vector x);
+
+#ifdef MFEM_USE_MPI
+/* HYPRE BoomerAMG Solver (parallel only) */
+mfem_Solver mfem_hypre_boomeramg_create();
+void mfem_hypre_boomeramg_set_operator(mfem_Solver solver, mfem_HypreParMatrix mat);
+void mfem_hypre_boomeramg_set_tolerance(mfem_Solver solver, double tol);
+void mfem_hypre_boomeramg_set_max_iter(mfem_Solver solver, int32_t max_it);
+void mfem_hypre_boomeramg_mult(mfem_Solver solver, mfem_Vector b, mfem_Vector x);
+#endif
+
+/*============================================================================
+ * ODE Solver Functions
+ *===========================================================================*/
+
+typedef void* mfem_ODESolver;
+typedef void* mfem_TimeDependentOperator;
+
+/* Explicit ODE solvers */
+mfem_ODESolver mfem_forward_euler_solver_create();
+mfem_ODESolver mfem_rk2_solver_create();
+mfem_ODESolver mfem_rk4_solver_create();
+
+/* Implicit ODE solvers */
+mfem_ODESolver mfem_backward_euler_solver_create();
+mfem_ODESolver mfem_sdirk23_solver_create();
+mfem_ODESolver mfem_sdirk34_solver_create();
+
+/* ODE solver operations */
+void mfem_odesolver_init(mfem_ODESolver solver, mfem_TimeDependentOperator op);
+void mfem_odesolver_step(mfem_ODESolver solver, mfem_Vector x, double* t, double* dt);
+void mfem_odesolver_destroy(mfem_ODESolver solver);
 
 /*============================================================================
  * Utility Functions

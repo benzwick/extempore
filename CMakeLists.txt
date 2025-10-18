@@ -830,6 +830,10 @@ if(UNIX)
     endif()
 
     # GLVis - OpenGL visualization for MFEM
+    # Note: --allow-shlib-undefined is needed because GLVis links against system PulseAudio,
+    # which depends on system libsndfile, but our custom libsndfile in EXT_DEPS_INSTALL_DIR/lib
+    # creates symbol version conflicts. This flag allows the linker to defer resolution of
+    # PulseAudio's libsndfile symbols to runtime, where the system libsndfile will be used.
     ExternalProject_Add(glvis
       PREFIX glvis
       URL https://github.com/GLVis/glvis/archive/v4.4.tar.gz
@@ -837,6 +841,7 @@ if(UNIX)
       -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
       -DCMAKE_C_FLAGS=${EXT_DEPS_C_FLAGS}
       -DCMAKE_CXX_FLAGS=${EXT_DEPS_CXX_FLAGS}
+      -DCMAKE_EXE_LINKER_FLAGS=-Wl,--allow-shlib-undefined
       -DMFEM_DIR=${EXT_DEPS_INSTALL_DIR}
       -DCMAKE_INSTALL_PREFIX=${EXT_DEPS_INSTALL_DIR})
     set_target_properties(glvis PROPERTIES FOLDER EXTERNAL_SHLIBS)

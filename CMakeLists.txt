@@ -855,6 +855,7 @@ if(UNIX)
 
     # Copy simulation libraries to platform-shlibs directory
     # Note: METIS is a static library linked into MFEM, so we don't copy it
+    # Note: GLVis is an executable in bin/, not a library, so we don't copy it
     if(MFEM_USE_MPI)
       add_custom_target(external_shlibs_simulation
         COMMENT "moving shared libs into ${EXT_PLATFORM_SHLIBS_DIR}"
@@ -862,7 +863,6 @@ if(UNIX)
         COMMAND ${CMAKE_COMMAND} -E make_directory ${EXT_PLATFORM_SHLIBS_DIR}
         COMMAND ${CMAKE_COMMAND} -E copy libHYPRE${CMAKE_SHARED_LIBRARY_SUFFIX} ${EXT_PLATFORM_SHLIBS_DIR}
         COMMAND ${CMAKE_COMMAND} -E copy libmfem${CMAKE_SHARED_LIBRARY_SUFFIX} ${EXT_PLATFORM_SHLIBS_DIR}
-        COMMAND ${CMAKE_COMMAND} -E copy libglvis${CMAKE_SHARED_LIBRARY_SUFFIX} ${EXT_PLATFORM_SHLIBS_DIR}
         WORKING_DIRECTORY ${EXT_DEPS_INSTALL_DIR}/lib)
     else()
       add_custom_target(external_shlibs_simulation
@@ -870,7 +870,6 @@ if(UNIX)
         DEPENDS LLVM mfem glvis
         COMMAND ${CMAKE_COMMAND} -E make_directory ${EXT_PLATFORM_SHLIBS_DIR}
         COMMAND ${CMAKE_COMMAND} -E copy libmfem${CMAKE_SHARED_LIBRARY_SUFFIX} ${EXT_PLATFORM_SHLIBS_DIR}
-        COMMAND ${CMAKE_COMMAND} -E copy libglvis${CMAKE_SHARED_LIBRARY_SUFFIX} ${EXT_PLATFORM_SHLIBS_DIR}
         WORKING_DIRECTORY ${EXT_DEPS_INSTALL_DIR}/lib)
     endif()
     set_target_properties(external_shlibs_simulation PROPERTIES FOLDER EXTERNAL_SHLIBS)

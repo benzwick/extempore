@@ -30,6 +30,7 @@ typedef void* mfem_HypreParMatrix;
 typedef void* mfem_Vector;
 typedef void* mfem_Coefficient;
 typedef void* mfem_Solver;
+typedef void* mfem_IntArray;
 
 /* Element types - match mfem::Element::Type */
 enum mfem_ElementType {
@@ -73,6 +74,8 @@ void mfem_mesh_save(mfem_Mesh mesh, const char* filename);
 int32_t mfem_mesh_get_ne(mfem_Mesh mesh);  /* number of elements */
 int32_t mfem_mesh_get_nv(mfem_Mesh mesh);  /* number of vertices */
 int32_t mfem_mesh_get_dimension(mfem_Mesh mesh);
+int32_t mfem_mesh_get_bdr_attributes_max(mfem_Mesh mesh);
+int32_t mfem_mesh_get_attributes_max(mfem_Mesh mesh);
 
 /* Cleanup */
 void mfem_mesh_destroy(mfem_Mesh mesh);
@@ -94,10 +97,16 @@ void mfem_parmesh_destroy(mfem_ParMesh mesh);
 
 /* Create FE space */
 mfem_FiniteElementSpace mfem_fespace_create(mfem_Mesh mesh, int32_t fe_type, int32_t order);
+mfem_FiniteElementSpace mfem_fespace_create_vdim(mfem_Mesh mesh, int32_t fe_type, int32_t order, int32_t vdim);
 
 /* FE space queries */
 int32_t mfem_fespace_get_ndof(mfem_FiniteElementSpace fespace);
 int32_t mfem_fespace_get_order(mfem_FiniteElementSpace fespace);
+int32_t mfem_fespace_get_truevsize(mfem_FiniteElementSpace fespace);
+
+/* Boundary DOFs */
+void mfem_fespace_get_boundary_truedofs(mfem_FiniteElementSpace fespace, mfem_IntArray bdr_dofs);
+void mfem_fespace_get_essential_truedofs(mfem_FiniteElementSpace fespace, mfem_IntArray bdr_attr_is_ess, mfem_IntArray ess_tdof_list);
 
 /* Cleanup */
 void mfem_fespace_destroy(mfem_FiniteElementSpace fespace);
@@ -148,6 +157,13 @@ void mfem_linearform_destroy(mfem_LinearForm lf);
 mfem_BilinearForm mfem_bilinearform_create(mfem_FiniteElementSpace fespace);
 void mfem_bilinearform_assemble(mfem_BilinearForm bf);
 mfem_SparseMatrix mfem_bilinearform_get_matrix(mfem_BilinearForm bf);
+
+/* Form linear system and recover solution */
+void mfem_bilinearform_form_linear_system(mfem_BilinearForm bf, mfem_IntArray ess_tdof_list,
+                                           mfem_GridFunction x, mfem_LinearForm b,
+                                           mfem_SparseMatrix* A_out, mfem_Vector* X_out, mfem_Vector* B_out);
+void mfem_bilinearform_recover_solution(mfem_BilinearForm bf, mfem_Vector X, mfem_LinearForm b, mfem_GridFunction x);
+
 void mfem_bilinearform_destroy(mfem_BilinearForm bf);
 
 /*============================================================================
@@ -157,10 +173,19 @@ void mfem_bilinearform_destroy(mfem_BilinearForm bf);
 /* Function pointer type for custom coefficient functions */
 typedef double (*mfem_coeff_function)(const double* x, double t);
 
-/* Create coefficients */
+/* Scalar coefficients */
 mfem_Coefficient mfem_constant_coefficient_create(double value);
 mfem_Coefficient mfem_function_coefficient_create(mfem_coeff_function func);
+mfem_Coefficient mfem_pwconst_coefficient_create(mfem_Vector constants);
 void mfem_coefficient_destroy(mfem_Coefficient coeff);
+
+/* Vector coefficients */
+typedef void* mfem_VectorCoefficient;
+typedef void* mfem_VectorArrayCoefficient;
+
+mfem_VectorArrayCoefficient mfem_vector_array_coefficient_create(int32_t dim);
+void mfem_vector_array_coefficient_set(mfem_VectorArrayCoefficient vac, int32_t index, mfem_Coefficient coeff);
+void mfem_vector_array_coefficient_destroy(mfem_VectorArrayCoefficient vac);
 
 /*============================================================================
  * Integrator Functions (for Linear/Bilinear Forms)
@@ -173,9 +198,14 @@ typedef void* mfem_BilinearFormIntegrator;
 mfem_LinearFormIntegrator mfem_domain_lf_integrator_create(mfem_Coefficient coeff);
 void mfem_linearform_add_domain_integrator(mfem_LinearForm lf, mfem_LinearFormIntegrator integ);
 
+/* Boundary integrators for linear forms */
+mfem_LinearFormIntegrator mfem_vector_boundary_lf_integrator_create(mfem_VectorCoefficient vcoeff);
+void mfem_linearform_add_boundary_integrator(mfem_LinearForm lf, mfem_LinearFormIntegrator integ);
+
 /* Domain integrators for bilinear forms */
 mfem_BilinearFormIntegrator mfem_diffusion_integrator_create(mfem_Coefficient coeff);
 mfem_BilinearFormIntegrator mfem_mass_integrator_create(mfem_Coefficient coeff);
+mfem_BilinearFormIntegrator mfem_elasticity_integrator_create(mfem_Coefficient lambda, mfem_Coefficient mu);
 void mfem_bilinearform_add_domain_integrator(mfem_BilinearForm bf, mfem_BilinearFormIntegrator integ);
 
 /*============================================================================
@@ -188,6 +218,18 @@ double mfem_vector_get(mfem_Vector vec, int32_t index);
 int32_t mfem_vector_size(mfem_Vector vec);
 double* mfem_vector_get_data(mfem_Vector vec);
 void mfem_vector_destroy(mfem_Vector vec);
+
+/*============================================================================
+ * IntArray Functions
+ *===========================================================================*/
+
+mfem_IntArray mfem_intarray_create();
+mfem_IntArray mfem_intarray_create_with_size(int32_t size);
+void mfem_intarray_destroy(mfem_IntArray arr);
+int32_t mfem_intarray_size(mfem_IntArray arr);
+void mfem_intarray_set(mfem_IntArray arr, int32_t index, int32_t value);
+int32_t mfem_intarray_get(mfem_IntArray arr, int32_t index);
+void mfem_intarray_set_all(mfem_IntArray arr, int32_t value);
 
 /*============================================================================
  * Solver Functions

@@ -102,6 +102,26 @@ int32_t mfem_mesh_get_dimension(mfem_Mesh mesh) {
     return 0;
 }
 
+int32_t mfem_mesh_get_bdr_attributes_max(mfem_Mesh mesh) {
+    if (mesh) {
+        mfem::Mesh* m = (mfem::Mesh*)mesh;
+        if (m->bdr_attributes.Size() > 0) {
+            return m->bdr_attributes.Max();
+        }
+    }
+    return 0;
+}
+
+int32_t mfem_mesh_get_attributes_max(mfem_Mesh mesh) {
+    if (mesh) {
+        mfem::Mesh* m = (mfem::Mesh*)mesh;
+        if (m->attributes.Size() > 0) {
+            return m->attributes.Max();
+        }
+    }
+    return 0;
+}
+
 void mfem_mesh_destroy(mfem_Mesh mesh) {
     if (mesh) {
         delete (mfem::Mesh*)mesh;
@@ -201,6 +221,61 @@ int32_t mfem_fespace_get_order(mfem_FiniteElementSpace fespace) {
         return ((mfem::FiniteElementSpace*)fespace)->GetOrder(0);  /* Order of first element */
     }
     return 0;
+}
+
+int32_t mfem_fespace_get_truevsize(mfem_FiniteElementSpace fespace) {
+    if (fespace) {
+        return ((mfem::FiniteElementSpace*)fespace)->GetTrueVSize();
+    }
+    return 0;
+}
+
+mfem_FiniteElementSpace mfem_fespace_create_vdim(mfem_Mesh mesh, int32_t fe_type, int32_t order, int32_t vdim) {
+    MFEM_C_TRY
+        mfem::Mesh* m = (mfem::Mesh*)mesh;
+        mfem::FiniteElementCollection* fec = nullptr;
+
+        switch (fe_type) {
+            case MFEM_FE_H1_TYPE:
+                fec = new mfem::H1_FECollection(order, m->Dimension());
+                break;
+            case MFEM_FE_L2_TYPE:
+                fec = new mfem::L2_FECollection(order, m->Dimension());
+                break;
+            case MFEM_FE_RT_TYPE:
+                fec = new mfem::RT_FECollection(order, m->Dimension());
+                break;
+            case MFEM_FE_ND_TYPE:
+                fec = new mfem::ND_FECollection(order, m->Dimension());
+                break;
+            default:
+                g_last_error = "Invalid finite element type";
+                return nullptr;
+        }
+
+        mfem::FiniteElementSpace* fespace = new mfem::FiniteElementSpace(m, fec, vdim);
+        return (mfem_FiniteElementSpace)fespace;
+    MFEM_C_CATCH
+    return nullptr;
+}
+
+void mfem_fespace_get_boundary_truedofs(mfem_FiniteElementSpace fespace, mfem_IntArray bdr_dofs) {
+    if (fespace && bdr_dofs) {
+        mfem::FiniteElementSpace* fes = (mfem::FiniteElementSpace*)fespace;
+        mfem::Array<int>* dofs = (mfem::Array<int>*)bdr_dofs;
+        fes->GetBoundaryTrueDofs(*dofs);
+    }
+}
+
+void mfem_fespace_get_essential_truedofs(mfem_FiniteElementSpace fespace,
+                                          mfem_IntArray bdr_attr_is_ess,
+                                          mfem_IntArray ess_tdof_list) {
+    if (fespace && bdr_attr_is_ess && ess_tdof_list) {
+        mfem::FiniteElementSpace* fes = (mfem::FiniteElementSpace*)fespace;
+        mfem::Array<int>* bdr_attr = (mfem::Array<int>*)bdr_attr_is_ess;
+        mfem::Array<int>* ess_dofs = (mfem::Array<int>*)ess_tdof_list;
+        fes->GetEssentialTrueDofs(*bdr_attr, *ess_dofs);
+    }
 }
 
 void mfem_fespace_destroy(mfem_FiniteElementSpace fespace) {
@@ -387,6 +462,39 @@ mfem_SparseMatrix mfem_bilinearform_get_matrix(mfem_BilinearForm bf) {
     return nullptr;
 }
 
+void mfem_bilinearform_form_linear_system(mfem_BilinearForm bf, mfem_IntArray ess_tdof_list,
+                                           mfem_GridFunction x, mfem_LinearForm b,
+                                           mfem_SparseMatrix* A_out, mfem_Vector* X_out, mfem_Vector* B_out) {
+    if (bf && x && b && A_out && X_out && B_out) {
+        mfem::BilinearForm* a = (mfem::BilinearForm*)bf;
+        mfem::Array<int>* ess_dofs = (mfem::Array<int>*)ess_tdof_list;
+        mfem::GridFunction* gf_x = (mfem::GridFunction*)x;
+        mfem::LinearForm* lf_b = (mfem::LinearForm*)b;
+
+        mfem::SparseMatrix* A = new mfem::SparseMatrix();
+        mfem::Vector* X = new mfem::Vector();
+        mfem::Vector* B = new mfem::Vector();
+
+        a->FormLinearSystem(*ess_dofs, *gf_x, *lf_b, *A, *X, *B);
+
+        *A_out = (mfem_SparseMatrix)A;
+        *X_out = (mfem_Vector)X;
+        *B_out = (mfem_Vector)B;
+    }
+}
+
+void mfem_bilinearform_recover_solution(mfem_BilinearForm bf, mfem_Vector X,
+                                         mfem_LinearForm b, mfem_GridFunction x) {
+    if (bf && X && b && x) {
+        mfem::BilinearForm* a = (mfem::BilinearForm*)bf;
+        mfem::Vector* vec_X = (mfem::Vector*)X;
+        mfem::LinearForm* lf_b = (mfem::LinearForm*)b;
+        mfem::GridFunction* gf_x = (mfem::GridFunction*)x;
+
+        a->RecoverFEMSolution(*vec_X, *lf_b, *gf_x);
+    }
+}
+
 void mfem_bilinearform_destroy(mfem_BilinearForm bf) {
     if (bf) {
         delete (mfem::BilinearForm*)bf;
@@ -437,9 +545,45 @@ mfem_Coefficient mfem_function_coefficient_create(mfem_coeff_function func) {
     return nullptr;
 }
 
+mfem_Coefficient mfem_pwconst_coefficient_create(mfem_Vector constants) {
+    MFEM_C_TRY
+        if (!constants) return nullptr;
+        mfem::Vector* vec = (mfem::Vector*)constants;
+        mfem::PWConstCoefficient* coeff = new mfem::PWConstCoefficient(*vec);
+        return (mfem_Coefficient)coeff;
+    MFEM_C_CATCH
+    return nullptr;
+}
+
 void mfem_coefficient_destroy(mfem_Coefficient coeff) {
     if (coeff) {
         delete (mfem::Coefficient*)coeff;
+    }
+}
+
+/*============================================================================
+ * Vector Coefficient Functions
+ *===========================================================================*/
+
+mfem_VectorArrayCoefficient mfem_vector_array_coefficient_create(int32_t dim) {
+    MFEM_C_TRY
+        mfem::VectorArrayCoefficient* vac = new mfem::VectorArrayCoefficient(dim);
+        return (mfem_VectorArrayCoefficient)vac;
+    MFEM_C_CATCH
+    return nullptr;
+}
+
+void mfem_vector_array_coefficient_set(mfem_VectorArrayCoefficient vac, int32_t index, mfem_Coefficient coeff) {
+    if (vac && coeff) {
+        mfem::VectorArrayCoefficient* v = (mfem::VectorArrayCoefficient*)vac;
+        mfem::Coefficient* c = (mfem::Coefficient*)coeff;
+        v->Set(index, c);
+    }
+}
+
+void mfem_vector_array_coefficient_destroy(mfem_VectorArrayCoefficient vac) {
+    if (vac) {
+        delete (mfem::VectorArrayCoefficient*)vac;
     }
 }
 
@@ -461,6 +605,23 @@ void mfem_linearform_add_domain_integrator(mfem_LinearForm lf, mfem_LinearFormIn
         if (lf && integ) {
             ((mfem::LinearForm*)lf)->AddDomainIntegrator((mfem::LinearFormIntegrator*)integ);
             /* Note: LinearForm takes ownership of the integrator */
+        }
+    MFEM_C_CATCH
+}
+
+mfem_LinearFormIntegrator mfem_vector_boundary_lf_integrator_create(mfem_VectorCoefficient vcoeff) {
+    MFEM_C_TRY
+        if (!vcoeff) return nullptr;
+        mfem::VectorBoundaryLFIntegrator* integ = new mfem::VectorBoundaryLFIntegrator(*((mfem::VectorCoefficient*)vcoeff));
+        return (mfem_LinearFormIntegrator)integ;
+    MFEM_C_CATCH
+    return nullptr;
+}
+
+void mfem_linearform_add_boundary_integrator(mfem_LinearForm lf, mfem_LinearFormIntegrator integ) {
+    MFEM_C_TRY
+        if (lf && integ) {
+            ((mfem::LinearForm*)lf)->AddBoundaryIntegrator((mfem::LinearFormIntegrator*)integ);
         }
     MFEM_C_CATCH
 }
@@ -488,6 +649,18 @@ mfem_BilinearFormIntegrator mfem_mass_integrator_create(mfem_Coefficient coeff) 
             mfem::MassIntegrator* integ = new mfem::MassIntegrator(*((mfem::Coefficient*)coeff));
             return (mfem_BilinearFormIntegrator)integ;
         }
+    MFEM_C_CATCH
+    return nullptr;
+}
+
+mfem_BilinearFormIntegrator mfem_elasticity_integrator_create(mfem_Coefficient lambda, mfem_Coefficient mu) {
+    MFEM_C_TRY
+        if (!lambda || !mu) return nullptr;
+        mfem::ElasticityIntegrator* integ = new mfem::ElasticityIntegrator(
+            *((mfem::Coefficient*)lambda),
+            *((mfem::Coefficient*)mu)
+        );
+        return (mfem_BilinearFormIntegrator)integ;
     MFEM_C_CATCH
     return nullptr;
 }
@@ -796,6 +969,48 @@ void mfem_odesolver_destroy(mfem_ODESolver solver) {
             delete (mfem::ODESolver*)solver;
         }
     MFEM_C_CATCH
+}
+
+/*============================================================================
+ * IntArray Functions
+ *===========================================================================*/
+
+mfem_IntArray mfem_intarray_create() {
+    MFEM_C_TRY
+        return (mfem_IntArray)(new mfem::Array<int>());
+    MFEM_C_CATCH
+    return nullptr;
+}
+
+mfem_IntArray mfem_intarray_create_with_size(int32_t size) {
+    MFEM_C_TRY
+        return (mfem_IntArray)(new mfem::Array<int>(size));
+    MFEM_C_CATCH
+    return nullptr;
+}
+
+void mfem_intarray_destroy(mfem_IntArray arr) {
+    delete (mfem::Array<int>*)arr;
+}
+
+int32_t mfem_intarray_size(mfem_IntArray arr) {
+    mfem::Array<int>* a = (mfem::Array<int>*)arr;
+    return a->Size();
+}
+
+void mfem_intarray_set(mfem_IntArray arr, int32_t index, int32_t value) {
+    mfem::Array<int>* a = (mfem::Array<int>*)arr;
+    (*a)[index] = value;
+}
+
+int32_t mfem_intarray_get(mfem_IntArray arr, int32_t index) {
+    mfem::Array<int>* a = (mfem::Array<int>*)arr;
+    return (*a)[index];
+}
+
+void mfem_intarray_set_all(mfem_IntArray arr, int32_t value) {
+    mfem::Array<int>* a = (mfem::Array<int>*)arr;
+    *a = value;
 }
 
 /*============================================================================

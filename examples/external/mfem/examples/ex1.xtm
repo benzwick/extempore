@@ -1,0 +1,160 @@
+;;; ex1.xtm -- MFEM Example 1 (Poisson equation)
+;;;
+;;; This example code demonstrates the use of MFEM to define a simple
+;;; finite element discretization of the Poisson problem
+;;; -Delta u = 1 with homogeneous Dirichlet boundary conditions.
+;;;
+;;; The example highlights:
+;;; - Mesh loading and adaptive refinement
+;;; - H1 finite element space creation with user-specified order
+;;; - Essential boundary condition marking by attribute
+;;; - Assembly with integrators
+;;; - Solving with PCG
+;;; - Saving solution for visualization
+;;;
+;;; Compile: (sys:load "examples/external/mfem/examples/ex1.xtm")
+;;; Run: (ex1_main)
+
+;; Load MFEM library
+(sys:load "libs/external/mfem.xtm")
+
+(bind-func ex1_main
+  (lambda ()
+    (let ((mesh_file "examples/external/mfem/data/star.mesh")
+          (order:i32 1)
+          (mesh:mfem_Mesh null)
+          (dim:i32 0)
+          (ref_levels:i32 0)
+          (max_elems:i32 50000)
+          (fespace:mfem_FiniteElementSpace null)
+          (ndofs:i32 0)
+          (ess_bdr:mfem_IntArray null)
+          (ess_tdof_list:mfem_IntArray null)
+          (bdr_attr_max:i32 0)
+          (x:mfem_GridFunction null)
+          (one:mfem_Coefficient null)
+          (b:mfem_LinearForm null)
+          (a:mfem_BilinearForm null)
+          (diff_integ null)
+          (domain_integ null)
+          (A:mfem_SparseMatrix null)
+          (B:mfem_Vector null)
+          (X:mfem_Vector null)
+          (M:mfem_Solver null)
+          (i:i32 0))
+
+      (println "MFEM Example 1 - Poisson Equation")
+      (println "==================================")
+
+      ;; 1. Read the mesh from file
+      (println "\n1. Loading mesh from:" mesh_file)
+      (set! mesh (mfem_mesh_load_file mesh_file))
+      (if (null? mesh)
+          (begin (println "Error: Could not load mesh") -1)
+          (begin
+            (set! dim (mfem_mesh_get_dimension mesh))
+            (println "   Mesh dimension:" dim)
+            (println "   Number of elements:" (mfem_mesh_get_ne mesh))
+
+            ;; 2. Refine the mesh to increase resolution
+            ;;    Choose ref_levels to be largest number giving < 50000 elements
+            (set! ref_levels (convert (floor (/ (log (/ (convert max_elems) (convert (mfem_mesh_get_ne mesh))))
+                                                  (* (log 2.0) (convert dim)))) i32))
+            (println "\n2. Refining mesh" ref_levels "times...")
+            (dotimes (i ref_levels)
+              (mfem_mesh_uniform_refine mesh 1))
+            (println "   Elements after refinement:" (mfem_mesh_get_ne mesh))
+
+            ;; 3. Define H1 finite element space
+            (println "\n3. Creating H1 finite element space of order" order)
+            (set! fespace (mfem_fespace_create mesh MFEM_FE_H1 order))
+            (set! ndofs (mfem_fespace_get_truevsize fespace))
+            (println "   Number of unknowns:" ndofs)
+
+            ;; 4. Determine essential boundary DOFs
+            ;;    Mark all boundary attributes as essential (Dirichlet)
+            (println "\n4. Determining essential boundary DOFs...")
+            (set! bdr_attr_max (mfem_mesh_get_bdr_attributes_max mesh))
+            (if (> bdr_attr_max 0)
+                (begin
+                  (set! ess_bdr (mfem_intarray_create_with_size bdr_attr_max))
+                  (mfem_intarray_set_all ess_bdr 1)  ;; Mark all as essential
+                  (set! ess_tdof_list (mfem_intarray_create))
+                  (mfem_fespace_get_essential_truedofs fespace ess_bdr ess_tdof_list)
+                  (println "   Boundary attributes:" bdr_attr_max)
+                  (println "   Essential DOFs marked"))
+                (begin
+                  (set! ess_tdof_list (mfem_intarray_create))
+                  (println "   No boundary attributes")))
+
+            ;; 5. Define solution vector x and initialize to zero
+            (println "\n5. Initializing solution vector...")
+            (set! x (mfem_gridfunc_create fespace))
+            (mfem_gridfunc_set_constant x 0.0)
+
+            ;; 6. Set up the linear form b (right-hand side)
+            (println "\n6. Assembling right-hand side...")
+            (set! one (mfem_constant_coefficient_create 1.0))
+            (set! b (mfem_linearform_create fespace))
+            (set! domain_integ (mfem_domain_lf_integrator_create one))
+            (mfem_linearform_add_domain_integrator b domain_integ)
+            (mfem_linearform_assemble b)
+
+            ;; 7. Set up the bilinear form a (Laplacian operator)
+            (println "\n7. Assembling bilinear form...")
+            (set! a (mfem_bilinearform_create fespace))
+            (set! diff_integ (mfem_diffusion_integrator_create one))
+            (mfem_bilinearform_add_domain_integrator a diff_integ)
+            (mfem_bilinearform_assemble a)
+
+            ;; 8. Form the linear system
+            (println "\n8. Forming linear system...")
+            (mfem_bilinearform_form_linear_system a ess_tdof_list x b
+                                                   (ref A) (ref X) (ref B))
+            (println "   System size:" (mfem_vector_size X))
+
+            ;; 9. Solve with PCG
+            (println "\n9. Solving with PCG...")
+            (set! M (mfem_cg_solver_create))
+            (mfem_cg_solver_set_operator M A)
+            (mfem_cg_solver_set_tolerance M 1.0e-12)
+            (mfem_cg_solver_set_max_iter M 200)
+            (mfem_cg_solver_mult M B X)
+
+            ;; 10. Recover the solution
+            (println "\n10. Recovering solution...")
+            (mfem_bilinearform_recover_solution a X b x)
+
+            ;; 11. Save the refined mesh and solution
+            (println "\n11. Saving refined mesh and solution...")
+            (mfem_mesh_save mesh "refined.mesh")
+            (mfem_gridfunc_save x "sol.gf")
+            (println "    Saved to: refined.mesh and sol.gf")
+            (println "    View with: glvis -m refined.mesh -g sol.gf")
+
+            ;; Cleanup
+            (println "\n12. Cleaning up...")
+            (mfem_solver_destroy M)
+            (mfem_vector_destroy X)
+            (mfem_vector_destroy B)
+            (mfem_bilinearform_destroy a)
+            (mfem_linearform_destroy b)
+            (mfem_coefficient_destroy one)
+            (mfem_gridfunc_destroy x)
+            (mfem_intarray_destroy ess_tdof_list)
+            (if (not (null? ess_bdr))
+                (mfem_intarray_destroy ess_bdr)
+                void)
+            (mfem_fespace_destroy fespace)
+            (mfem_mesh_destroy mesh)
+
+            (println "\nExample 1 completed successfully!")
+            0)))))
+
+;; Run the example
+(bind-func ex1_run
+  (lambda ()
+    (ex1_main)))
+
+(println "\nTo run example 1:")
+(println "  (ex1_run)")

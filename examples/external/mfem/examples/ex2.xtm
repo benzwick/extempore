@@ -1,0 +1,200 @@
+;;; ex2.xtm -- MFEM Example 2 (Linear Elasticity)
+;;;
+;;; This example code solves a simple linear elasticity problem
+;;; describing a multi-material beam under load.
+;;;
+;;; The example highlights:
+;;; - Vector-valued finite element spaces (displacement field)
+;;; - Piecewise constant coefficients (material properties)
+;;; - ElasticityIntegrator for stress-strain relationship
+;;; - Boundary integrators for applied forces
+;;; - Essential boundary conditions on specific attributes
+;;;
+;;; Compile: (sys:load "examples/external/mfem/examples/ex2.xtm")
+;;; Run: (ex2_main)
+
+;; Load MFEM library
+(sys:load "libs/external/mfem.xtm")
+
+(bind-func ex2_main
+  (lambda ()
+    (let ((mesh_file "examples/external/mfem/data/beam-tri.mesh")
+          (order:i32 1)
+          (mesh:mfem_Mesh null)
+          (dim:i32 0)
+          (attr_max:i32 0)
+          (bdr_attr_max:i32 0)
+          (ref_levels:i32 0)
+          (max_elems:i32 5000)
+          (fespace:mfem_FiniteElementSpace null)
+          (ndofs:i32 0)
+          (ess_bdr:mfem_IntArray null)
+          (ess_tdof_list:mfem_IntArray null)
+          (x:mfem_GridFunction null)
+          (f:mfem_VectorArrayCoefficient null)
+          (pull_force:mfem_Vector null)
+          (zero_coeff:mfem_Coefficient null)
+          (pull_coeff:mfem_Coefficient null)
+          (b:mfem_LinearForm null)
+          (boundary_integ null)
+          (lambda_vec:mfem_Vector null)
+          (mu_vec:mfem_Vector null)
+          (lambda_coeff:mfem_Coefficient null)
+          (mu_coeff:mfem_Coefficient null)
+          (a:mfem_BilinearForm null)
+          (elast_integ null)
+          (A:mfem_SparseMatrix null)
+          (B:mfem_Vector null)
+          (X:mfem_Vector null)
+          (M:mfem_Solver null)
+          (i:i32 0))
+
+      (println "MFEM Example 2 - Linear Elasticity")
+      (println "===================================")
+
+      ;; 1. Read the mesh from file
+      (println "\n1. Loading mesh from:" mesh_file)
+      (set! mesh (mfem_mesh_load_file mesh_file))
+      (if (null? mesh)
+          (begin (println "Error: Could not load mesh") -1)
+          (begin
+            (set! dim (mfem_mesh_get_dimension mesh))
+            (println "   Mesh dimension:" dim)
+            (println "   Number of elements:" (mfem_mesh_get_ne mesh))
+
+            ;; 2. Refine the mesh
+            (set! ref_levels (convert (floor (/ (log (/ (convert max_elems) (convert (mfem_mesh_get_ne mesh))))
+                                                  (* (log 2.0) (convert dim)))) i32))
+            (println "\n2. Refining mesh" ref_levels "times...")
+            (dotimes (i ref_levels)
+              (mfem_mesh_uniform_refine mesh 1))
+            (println "   Elements after refinement:" (mfem_mesh_get_ne mesh))
+
+            ;; 3. Define vector H1 finite element space (dim components)
+            (println "\n3. Creating vector H1 finite element space...")
+            (set! fespace (mfem_fespace_create_vdim mesh MFEM_FE_H1 order dim))
+            (set! ndofs (mfem_fespace_get_truevsize fespace))
+            (println "   Order:" order ", Vector dimension:" dim)
+            (println "   Number of unknowns:" ndofs)
+
+            ;; 4. Mark essential boundary DOFs (attribute 1 - fixed end)
+            (println "\n4. Setting essential boundary conditions...")
+            (set! bdr_attr_max (mfem_mesh_get_bdr_attributes_max mesh))
+            (set! ess_bdr (mfem_intarray_create_with_size bdr_attr_max))
+            (mfem_intarray_set_all ess_bdr 0)
+            (mfem_intarray_set ess_bdr 0 1)  ;; Fix attribute 1
+            (set! ess_tdof_list (mfem_intarray_create))
+            (mfem_fespace_get_essential_truedofs fespace ess_bdr ess_tdof_list)
+            (println "   Fixed boundary attribute 1")
+
+            ;; 5. Initialize solution vector to zero
+            (println "\n5. Initializing displacement field...")
+            (set! x (mfem_gridfunc_create fespace))
+            (mfem_gridfunc_set_constant x 0.0)
+
+            ;; 6. Set up the linear form b (applied forces)
+            ;;    Apply a downward force on boundary attribute 2
+            (println "\n6. Setting up applied forces...")
+            (set! f (mfem_vector_array_coefficient_create dim))
+            (set! zero_coeff (mfem_constant_coefficient_create 0.0))
+            ;; Zero force in x-direction (index 0)
+            (dotimes (i (- dim 1))
+              (mfem_vector_array_coefficient_set f i zero_coeff))
+            ;; Downward force in last component
+            (set! pull_force (mfem_vector_create bdr_attr_max))
+            (dotimes (i bdr_attr_max)
+              (mfem_vector_set pull_force i 0.0))
+            (if (>= bdr_attr_max 2)
+                (mfem_vector_set pull_force 1 -1.0e-2)  ;; Pull on attribute 2
+                void)
+            (set! pull_coeff (mfem_pwconst_coefficient_create pull_force))
+            (mfem_vector_array_coefficient_set f (- dim 1) pull_coeff)
+
+            (set! b (mfem_linearform_create fespace))
+            (set! boundary_integ (mfem_vector_boundary_lf_integrator_create f))
+            (mfem_linearform_add_boundary_integrator b boundary_integ)
+            (mfem_linearform_assemble b)
+            (println "   Forces assembled")
+
+            ;; 7. Define material properties (piecewise constant)
+            ;;    Different properties for different mesh attributes
+            (println "\n7. Defining material properties...")
+            (set! attr_max (mfem_mesh_get_attributes_max mesh))
+            (set! lambda_vec (mfem_vector_create attr_max))
+            (set! mu_vec (mfem_vector_create attr_max))
+            (dotimes (i attr_max)
+              (mfem_vector_set lambda_vec i 1.0)
+              (mfem_vector_set mu_vec i 1.0))
+            ;; Stiffer material for attribute 1
+            (if (> attr_max 0)
+                (begin
+                  (mfem_vector_set lambda_vec 0 50.0)
+                  (mfem_vector_set mu_vec 0 50.0))
+                void)
+            (set! lambda_coeff (mfem_pwconst_coefficient_create lambda_vec))
+            (set! mu_coeff (mfem_pwconst_coefficient_create mu_vec))
+            (println "   Material properties set")
+
+            ;; 8. Set up the bilinear form a (elasticity)
+            (println "\n8. Assembling elasticity operator...")
+            (set! a (mfem_bilinearform_create fespace))
+            (set! elast_integ (mfem_elasticity_integrator_create lambda_coeff mu_coeff))
+            (mfem_bilinearform_add_domain_integrator a elast_integ)
+            (mfem_bilinearform_assemble a)
+
+            ;; 9. Form the linear system
+            (println "\n9. Forming linear system...")
+            (mfem_bilinearform_form_linear_system a ess_tdof_list x b
+                                                   (ref A) (ref X) (ref B))
+            (println "   System size:" (mfem_vector_size X))
+
+            ;; 10. Solve with PCG
+            (println "\n10. Solving with PCG...")
+            (set! M (mfem_cg_solver_create))
+            (mfem_cg_solver_set_operator M A)
+            (mfem_cg_solver_set_tolerance M 1.0e-8)
+            (mfem_cg_solver_set_max_iter M 500)
+            (mfem_cg_solver_mult M B X)
+
+            ;; 11. Recover the solution
+            (println "\n11. Recovering displacement field...")
+            (mfem_bilinearform_recover_solution a X b x)
+
+            ;; 12. Save the displaced mesh and solution
+            (println "\n12. Saving results...")
+            (mfem_mesh_save mesh "displaced.mesh")
+            (mfem_gridfunc_save x "displacement.gf")
+            (println "    Saved to: displaced.mesh and displacement.gf")
+            (println "    View with: glvis -m displaced.mesh -g displacement.gf")
+
+            ;; Cleanup
+            (println "\n13. Cleaning up...")
+            (mfem_solver_destroy M)
+            (mfem_vector_destroy X)
+            (mfem_vector_destroy B)
+            (mfem_bilinearform_destroy a)
+            (mfem_coefficient_destroy mu_coeff)
+            (mfem_coefficient_destroy lambda_coeff)
+            (mfem_vector_destroy mu_vec)
+            (mfem_vector_destroy lambda_vec)
+            (mfem_linearform_destroy b)
+            (mfem_coefficient_destroy pull_coeff)
+            (mfem_vector_destroy pull_force)
+            (mfem_coefficient_destroy zero_coeff)
+            (mfem_vector_array_coefficient_destroy f)
+            (mfem_gridfunc_destroy x)
+            (mfem_intarray_destroy ess_tdof_list)
+            (mfem_intarray_destroy ess_bdr)
+            (mfem_fespace_destroy fespace)
+            (mfem_mesh_destroy mesh)
+
+            (println "\nExample 2 completed successfully!")
+            0)))))
+
+;; Run the example
+(bind-func ex2_run
+  (lambda ()
+    (ex2_main)))
+
+(println "\nTo run example 2:")
+(println "  (ex2_run)")

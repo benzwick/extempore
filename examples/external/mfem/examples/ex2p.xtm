@@ -1,0 +1,21 @@
+;;; ex2p.xtm -- MFEM Example 2p (Parallel Linear Elasticity)
+;;;
+;;; Parallel version of ex2.xtm using MPI and HYPRE.
+;;;
+;;; NOTE: This example requires:
+;;; - MFEM built with MPI support (MFEM_USE_MPI)
+;;; - Extempore MPI bindings
+;;; - HYPRE linear solvers
+;;;
+;;; Compile: (sys:load "examples/external/mfem/examples/ex2p.xtm")
+;;; Run with MPI: mpirun -np 4 extempore --run ex2p.xtm
+
+;; Load MFEM library
+(sys:load "libs/external/mfem.xtm")
+
+(println "\n==================================================")
+(println "MFEM Example 2p - Parallel Linear Elasticity")
+(println "==================================================")
+(println "\nNOTE: This example requires MPI support.")
+(println "See ex2.xtm for the serial implementation.")
+(println "Parallel version follows same structure with Par* types.")

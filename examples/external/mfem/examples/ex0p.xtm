@@ -1,0 +1,39 @@
+;;; ex0p.xtm -- MFEM Example 0p (Parallel Laplace equation)
+;;;
+;;; Parallel version of ex0.xtm using MPI and HYPRE.
+;;;
+;;; NOTE: This example requires:
+;;; - MFEM built with MPI support (MFEM_USE_MPI)
+;;; - Extempore MPI bindings
+;;; - HYPRE linear solvers
+;;;
+;;; The parallel version uses:
+;;; - mfem_ParMesh instead of mfem_Mesh
+;;; - mfem_ParFiniteElementSpace instead of mfem_FiniteElementSpace
+;;; - mfem_ParGridFunction instead of mfem_GridFunction
+;;; - HYPRE solvers instead of serial solvers
+;;;
+;;; Compile: (sys:load "examples/external/mfem/examples/ex0p.xtm")
+;;; Run with MPI: mpirun -np 4 extempore --run ex0p.xtm
+
+;; Load MFEM library
+(sys:load "libs/external/mfem.xtm")
+
+(println "\n==================================================")
+(println "MFEM Example 0p - Parallel Laplace Equation")
+(println "==================================================")
+(println "\nNOTE: This example requires MPI support.")
+(println "The implementation follows ex0.xtm but uses:")
+(println "  - mfem_parmesh_load_file")
+(println "  - mfem_parfespace_create")
+(println "  - mfem_pargridfunc_create")
+(println "  - HYPRE BoomerAMG solver")
+(println "\nTo implement:")
+(println "  1. Initialize MPI")
+(println "  2. Load parallel mesh with MPI communicator")
+(println "  3. Create parallel FE space")
+(println "  4. Assemble on each processor")
+(println "  5. Solve with HYPRE")
+(println "  6. Save parallel solution")
+(println "  7. Finalize MPI")
+(println "\nSee ex0.xtm for the serial implementation pattern.")

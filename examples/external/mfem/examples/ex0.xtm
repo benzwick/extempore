@@ -1,0 +1,141 @@
+;;; ex0.xtm -- MFEM Example 0 (Laplace equation)
+;;;
+;;; This example code demonstrates the most basic usage of MFEM to define
+;;; a simple finite element discretization of the Laplace problem
+;;; -Delta u = 1 with zero Dirichlet boundary conditions.
+;;;
+;;; The example highlights:
+;;; - Mesh loading and refinement
+;;; - H1 finite element space creation
+;;; - Assembly of linear and bilinear forms
+;;; - Enforcing essential boundary conditions
+;;; - Solving the linear system with PCG
+;;; - Saving the solution
+;;;
+;;; Compile: (sys:load "examples/external/mfem/examples/ex0.xtm")
+;;; Run: (ex0_main)
+
+;; Load MFEM library
+(sys:load "libs/external/mfem.xtm")
+
+(bind-func ex0_main
+  (lambda ()
+    (let ((mesh_file "examples/external/mfem/data/star.mesh")
+          (order:i32 1)
+          (mesh:mfem_Mesh null)
+          (dim:i32 0)
+          (fespace:mfem_FiniteElementSpace null)
+          (ndofs:i32 0)
+          (bdr_dofs:mfem_IntArray null)
+          (x:mfem_GridFunction null)
+          (one:mfem_Coefficient null)
+          (b:mfem_LinearForm null)
+          (a:mfem_BilinearForm null)
+          (diff_integ null)
+          (domain_integ null)
+          (A:mfem_SparseMatrix null)
+          (B:mfem_Vector null)
+          (X:mfem_Vector null)
+          (M:mfem_Solver null))
+
+      (println "MFEM Example 0 - Laplace Equation")
+      (println "==================================")
+
+      ;; 1. Read the mesh from file
+      (println "\n1. Loading mesh from:" mesh_file)
+      (set! mesh (mfem_mesh_load_file mesh_file))
+      (if (null? mesh)
+          (begin (println "Error: Could not load mesh") -1)
+          (begin
+            ;; Get mesh info
+            (set! dim (mfem_mesh_get_dimension mesh))
+            (println "   Mesh dimension:" dim)
+            (println "   Number of elements:" (mfem_mesh_get_ne mesh))
+            (println "   Number of vertices:" (mfem_mesh_get_nv mesh))
+
+            ;; 2. Refine the mesh once uniformly
+            (println "\n2. Refining mesh uniformly...")
+            (mfem_mesh_uniform_refine mesh 1)
+            (println "   Elements after refinement:" (mfem_mesh_get_ne mesh))
+
+            ;; 3. Define H1 finite element space
+            (println "\n3. Creating H1 finite element space of order" order)
+            (set! fespace (mfem_fespace_create mesh MFEM_FE_H1 order))
+            (set! ndofs (mfem_fespace_get_truevsize fespace))
+            (println "   Number of unknowns:" ndofs)
+
+            ;; 4. Extract boundary DOFs for Dirichlet BC (zero on all boundaries)
+            (println "\n4. Determining boundary DOFs...")
+            (set! bdr_dofs (mfem_intarray_create))
+            (mfem_fespace_get_boundary_truedofs fespace bdr_dofs)
+            (println "   Boundary DOFs marked")
+
+            ;; 5. Define solution vector x and initialize to zero
+            (println "\n5. Initializing solution vector...")
+            (set! x (mfem_gridfunc_create fespace))
+            (mfem_gridfunc_set_constant x 0.0)
+
+            ;; 6. Set up the linear form b (right-hand side)
+            (println "\n6. Assembling right-hand side...")
+            (set! one (mfem_constant_coefficient_create 1.0))
+            (set! b (mfem_linearform_create fespace))
+            (set! domain_integ (mfem_domain_lf_integrator_create one))
+            (mfem_linearform_add_domain_integrator b domain_integ)
+            (mfem_linearform_assemble b)
+
+            ;; 7. Set up the bilinear form a (Laplacian operator)
+            (println "\n7. Assembling bilinear form...")
+            (set! a (mfem_bilinearform_create fespace))
+            (set! diff_integ (mfem_diffusion_integrator_create one))
+            (mfem_bilinearform_add_domain_integrator a diff_integ)
+            (mfem_bilinearform_assemble a)
+
+            ;; 8. Form the linear system A X = B
+            (println "\n8. Forming linear system...")
+            (mfem_bilinearform_form_linear_system a bdr_dofs x b
+                                                   (ref A) (ref X) (ref B))
+            (println "   System size:" (mfem_vector_size X))
+
+            ;; 9. Solve with CG and GS smoother preconditioner
+            (println "\n9. Solving with PCG...")
+            (set! M (mfem_cg_solver_create))
+            (mfem_cg_solver_set_operator M A)
+            (mfem_cg_solver_set_tolerance M 1.0e-12)
+            (mfem_cg_solver_set_max_iter M 200)
+            (mfem_cg_solver_mult M B X)
+
+            ;; 10. Recover the solution
+            (println "\n10. Recovering solution...")
+            (mfem_bilinearform_recover_solution a X b x)
+
+            ;; 11. Save the solution and mesh
+            (println "\n11. Saving solution...")
+            (mfem_gridfunc_save x "sol.gf")
+            (mfem_mesh_save mesh "mesh.mesh")
+            (println "    Saved to: sol.gf and mesh.mesh")
+            (println "    View with: glvis -m mesh.mesh -g sol.gf")
+
+            ;; Cleanup
+            (println "\n12. Cleaning up...")
+            (mfem_solver_destroy M)
+            (mfem_vector_destroy X)
+            (mfem_vector_destroy B)
+            ;; Note: A is owned by the bilinear form
+            (mfem_bilinearform_destroy a)
+            (mfem_linearform_destroy b)
+            (mfem_coefficient_destroy one)
+            (mfem_gridfunc_destroy x)
+            (mfem_intarray_destroy bdr_dofs)
+            (mfem_fespace_destroy fespace)
+            (mfem_mesh_destroy mesh)
+
+            (println "\nExample 0 completed successfully!")
+            0)))))
+
+;; Run the example
+(bind-func ex0_run
+  (lambda ()
+    (ex0_main)))
+
+(println "\nTo run example 0:")
+(println "  (ex0_run)")

@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.12)
 project(mfem_c_api)
 
 # Find MFEM installation
-find_package(mfem REQUIRED)
+find_package(MFEM REQUIRED)
 
 # Create shared library with C API wrapper
 add_library(mfem_c_api SHARED
@@ -10,10 +10,9 @@ add_library(mfem_c_api SHARED
 
 target_include_directories(mfem_c_api
   PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}
-  PRIVATE
-    ${MFEM_INCLUDE_DIRS})
+    ${CMAKE_CURRENT_SOURCE_DIR})
 
+# Link against MFEM's exported target
 target_link_libraries(mfem_c_api
   PRIVATE
     mfem)

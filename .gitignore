@@ -116,3 +116,8 @@ CMakeSettings.json
 
 # ignore config
 config.txt
+
+# reference materials (cloned repos, papers, etc.)
+# Note: reference/README.md is tracked to explain what goes here
+/reference/mfem
+/reference/PyMFEM

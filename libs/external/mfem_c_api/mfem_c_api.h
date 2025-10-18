@@ -32,20 +32,24 @@ typedef void* mfem_Coefficient;
 typedef void* mfem_Solver;
 
 /* Element types - match mfem::Element::Type */
-#define MFEM_ELEMENT_POINT 0
-#define MFEM_ELEMENT_SEGMENT 1
-#define MFEM_ELEMENT_TRIANGLE 2
-#define MFEM_ELEMENT_QUAD 3
-#define MFEM_ELEMENT_TETRAHEDRON 4
-#define MFEM_ELEMENT_HEXAHEDRON 5
-#define MFEM_ELEMENT_WEDGE 6
-#define MFEM_ELEMENT_PYRAMID 7
+enum mfem_ElementType {
+    MFEM_ELEMENT_POINT = 0,
+    MFEM_ELEMENT_SEGMENT = 1,
+    MFEM_ELEMENT_TRIANGLE = 2,
+    MFEM_ELEMENT_QUAD = 3,
+    MFEM_ELEMENT_TETRAHEDRON = 4,
+    MFEM_ELEMENT_HEXAHEDRON = 5,
+    MFEM_ELEMENT_WEDGE = 6,
+    MFEM_ELEMENT_PYRAMID = 7
+};
 
 /* Finite Element types - common collections */
-#define MFEM_FE_H1 0
-#define MFEM_FE_L2 1
-#define MFEM_FE_RT 2  /* Raviart-Thomas */
-#define MFEM_FE_ND 3  /* Nedelec */
+enum mfem_FEType {
+    MFEM_FE_H1_TYPE = 0,
+    MFEM_FE_L2_TYPE = 1,
+    MFEM_FE_RT_TYPE = 2,  /* Raviart-Thomas */
+    MFEM_FE_ND_TYPE = 3   /* Nedelec */
+};
 
 /*============================================================================
  * Mesh Functions

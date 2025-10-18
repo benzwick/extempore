@@ -12,6 +12,13 @@ target_include_directories(mfem_c_api
   PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR})
 
+# Use MFEM's compiler flags (includes C++ standard, defines, etc.)
+# This matches how other MFEM-using projects compile
+if(MFEM_CXX_FLAGS)
+  separate_arguments(MFEM_CXX_FLAGS_LIST UNIX_COMMAND "${MFEM_CXX_FLAGS}")
+  target_compile_options(mfem_c_api PRIVATE ${MFEM_CXX_FLAGS_LIST})
+endif()
+
 # Link against MFEM's exported target
 target_link_libraries(mfem_c_api
   PRIVATE

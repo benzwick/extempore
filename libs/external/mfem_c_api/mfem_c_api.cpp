@@ -165,16 +165,16 @@ mfem_FiniteElementSpace mfem_fespace_create(mfem_Mesh mesh, int32_t fe_type, int
 
         /* Create appropriate FE collection based on type */
         switch (fe_type) {
-            case MFEM_FE_H1:
+            case MFEM_FE_H1_TYPE:
                 fec = new mfem::H1_FECollection(order, m->Dimension());
                 break;
-            case MFEM_FE_L2:
+            case MFEM_FE_L2_TYPE:
                 fec = new mfem::L2_FECollection(order, m->Dimension());
                 break;
-            case MFEM_FE_RT:
+            case MFEM_FE_RT_TYPE:
                 fec = new mfem::RT_FECollection(order, m->Dimension());
                 break;
-            case MFEM_FE_ND:
+            case MFEM_FE_ND_TYPE:
                 fec = new mfem::ND_FECollection(order, m->Dimension());
                 break;
             default:
@@ -221,16 +221,16 @@ mfem_ParFiniteElementSpace mfem_parfespace_create(mfem_ParMesh mesh, int32_t fe_
         mfem::FiniteElementCollection* fec = nullptr;
 
         switch (fe_type) {
-            case MFEM_FE_H1:
+            case MFEM_FE_H1_TYPE:
                 fec = new mfem::H1_FECollection(order, m->Dimension());
                 break;
-            case MFEM_FE_L2:
+            case MFEM_FE_L2_TYPE:
                 fec = new mfem::L2_FECollection(order, m->Dimension());
                 break;
-            case MFEM_FE_RT:
+            case MFEM_FE_RT_TYPE:
                 fec = new mfem::RT_FECollection(order, m->Dimension());
                 break;
-            case MFEM_FE_ND:
+            case MFEM_FE_ND_TYPE:
                 fec = new mfem::ND_FECollection(order, m->Dimension());
                 break;
             default:

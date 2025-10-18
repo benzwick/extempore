@@ -15,12 +15,12 @@ string(FIND "${MFEM_CMAKE_CONTENT}" "mfem_c_api.cpp" ALREADY_PATCHED)
 
 if(ALREADY_PATCHED EQUAL -1)
   # Find the line that adds mfem library sources
-  # MFEM's CMakeLists.txt has: add_library(mfem ${SOURCES} ${HEADERS})
+  # MFEM's CMakeLists.txt has: mfem_add_library(mfem ${SOURCES} ${HEADERS} ${MASTER_HEADERS})
   # We want to add our C API source to SOURCES before that line
 
   string(REPLACE
-    "add_library(mfem \${SOURCES} \${HEADERS})"
-    "list(APPEND SOURCES mfem_c_api.cpp)\nlist(APPEND HEADERS mfem_c_api.h)\nadd_library(mfem \${SOURCES} \${HEADERS})"
+    "mfem_add_library(mfem \${SOURCES} \${HEADERS} \${MASTER_HEADERS})"
+    "list(APPEND SOURCES mfem_c_api.cpp)\nlist(APPEND HEADERS mfem_c_api.h)\nmfem_add_library(mfem \${SOURCES} \${HEADERS} \${MASTER_HEADERS})"
     MFEM_CMAKE_CONTENT
     "${MFEM_CMAKE_CONTENT}")
 

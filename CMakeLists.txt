@@ -818,9 +818,15 @@ if(UNIX)
         -DCMAKE_CXX_COMPILER=hipcc)
     endif()
 
+    # Copy our C API wrapper files into MFEM source before building
+    # The patch command copies the C API files and modifies MFEM's CMakeLists.txt to include them
     ExternalProject_Add(mfem
       PREFIX mfem
       URL https://github.com/mfem/mfem/archive/v4.8.tar.gz
+      PATCH_COMMAND ${CMAKE_COMMAND}
+        -DMFEM_SOURCE_DIR=<SOURCE_DIR>
+        -DMFEM_CAPI_SOURCE_DIR=${CMAKE_SOURCE_DIR}/libs/external
+        -P ${CMAKE_SOURCE_DIR}/extras/cmake/patch_mfem_for_c_api.cmake
       CMAKE_ARGS ${MFEM_CMAKE_ARGS})
     set_target_properties(mfem PROPERTIES FOLDER EXTERNAL_SHLIBS)
 
